@@ -76,6 +76,13 @@ export class AuthApi {
     return this.http.put<CustomRole>(`${API.auth.tenants}/${tenantId}/roles/${roleId}`, body);
   }
 
+  /** Habilita o deshabilita un rol personalizado sin perder sus usuarios asignados. */
+  updateRoleStatus(tenantId: string, roleId: string, enabled: boolean): Observable<CustomRole> {
+    return this.http.patch<CustomRole>(`${API.auth.tenants}/${tenantId}/roles/${roleId}/status`, {
+      enabled,
+    });
+  }
+
   /** 409 si hay usuarios asignados: hay que reasignarlos antes de borrar. */
   deleteRole(tenantId: string, roleId: string): Observable<void> {
     return this.http.delete<void>(`${API.auth.tenants}/${tenantId}/roles/${roleId}`);

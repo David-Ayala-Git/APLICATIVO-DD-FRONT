@@ -32,7 +32,10 @@ export const pageGuard: CanActivateChildFn = (route) => {
 
   return tenants.ensureLoaded().pipe(
     map((tenant) => {
-      if (canAccessPage(path, auth.role(), tenant)) {
+      const permissions = tenants.effectivePermissions();
+      const allowedByCustomRole =
+        !permissions || path === 'dashboard' || permissions.includes(path);
+      if (canAccessPage(path, auth.role(), tenant) && allowedByCustomRole) {
         return true;
       }
       toast.info('Esa pagina no esta disponible para tu rol o tu plan.');

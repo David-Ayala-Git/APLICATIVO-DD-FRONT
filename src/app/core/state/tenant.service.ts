@@ -110,7 +110,15 @@ export class TenantService {
     if (!customRoleId) {
       return null;
     }
-    return this.customRolesSignal().find((r) => r.id === customRoleId)?.permissions ?? null;
+    const role = this.customRolesSignal().find((r) => r.id === customRoleId);
+    if (!role) {
+      return null;
+    }
+    // Un rol deshabilitado restringe el acceso a las paginas adicionales hasta reactivarlo.
+    if (role.enabled === false) {
+      return [];
+    }
+    return role.permissions;
   });
 
   private refreshCustomRoles(tenant: Tenant | null): void {

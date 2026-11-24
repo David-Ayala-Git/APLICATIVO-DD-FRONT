@@ -88,6 +88,8 @@ export interface CustomRole {
   name: string;
   description: string | null;
   permissions: string[];
+  /** true por defecto; false cuando un admin deshabilita el rol sin borrarlo. */
+  enabled?: boolean;
   createdAt: string;
 }
 
@@ -101,6 +103,7 @@ export interface UpdateCustomRoleRequest {
   name: string;
   description?: string | null;
   permissions: string[];
+  enabled?: boolean;
 }
 
 /** Claims que el gateway lee del JWT para fijar X-Tenant-Id / X-User-Id / X-User-Role. */

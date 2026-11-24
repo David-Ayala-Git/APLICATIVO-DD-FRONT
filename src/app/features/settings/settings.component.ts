@@ -101,14 +101,32 @@ export class SettingsComponent {
 
   // ---------- Roles personalizados (Configuracion > Usuarios y roles) ----------
 
+  /** Proveedor elegido por el Super Admin para administrar sus roles personalizados. */
+  protected readonly selectedRoleTenantId = signal('');
   protected readonly customRoles = signal<CustomRole[]>([]);
   protected readonly customRolesLoading = signal(false);
   protected readonly customRolesError = signal<string | null>(null);
   protected readonly editingRole = signal<CustomRole | 'new' | null>(null);
   protected readonly busyRoleId = signal<string | null>(null);
+  protected readonly roleEnabled = signal(true);
+  /** Roles habilitados del proveedor elegido en el modal "Nuevo usuario". */
+  protected readonly userModalRoles = signal<CustomRole[]>([]);
   /** Permisos marcados en el formulario de rol; aparte del FormGroup porque son
    *  un conjunto de casillas, no un control reactivo convencional. */
   protected readonly selectedPermissions = signal<Set<string>>(new Set());
+
+  protected readonly presetRoles: { value: Role; text: string }[] = [
+    { value: 'ADMIN_ISP', text: 'Admin del ISP' },
+    { value: 'OPERADOR', text: 'Operador' },
+    { value: 'CARTERA', text: 'Cartera' },
+    { value: 'TECNICO', text: 'Tecnico' },
+  ];
+
+  private readonly navItemIndex = new Map(
+    NAV.flatMap((section) => section.items.map((item) => [item.path, item] as const)),
+  );
+
+  protected readonly allNavPaths = NAV.flatMap((section) => section.items.map((item) => item.path));
 
   protected readonly roleForm = this.fb.nonNullable.group({
     name: ['', Validators.required],
@@ -192,6 +210,26 @@ export class SettingsComponent {
   });
 
   /**
+   * Proveedor cuyos roles se estan administrando:
+   * - ADMIN_ISP: siempre su propio proveedor.
+   * - SUPER_ADMIN: el que elija en el selector (por defecto el primero de la lista).
+   */
+  protected readonly managedRoleTenant = computed<Tenant | null>(() => {
+    if (!this.isSuperAdmin()) {
+      return this.tenant();
+    }
+    const list = this.tenants.value();
+    const chosen = this.selectedRoleTenantId();
+    return list.find((t) => t.id === chosen) ?? list[0] ?? null;
+  });
+
+  /** Roles activos disponibles para asignar al crear un usuario. */
+  protected readonly assignableCustomRoles = computed(() => {
+    const source = this.isSuperAdmin() ? this.userModalRoles() : this.customRoles();
+    return source.filter((r) => r.enabled !== false);
+  });
+
+  /**
    * Usuarios visibles: dd_ms_auth ya filtra por quien llama (Super Admin ve
    * todos, Admin del ISP los de su proveedor, el resto solo a si mismo).
    */
@@ -210,15 +248,32 @@ export class SettingsComponent {
   }
 
   /**
-   * En cuanto se conoce el tenant de la sesion se piden sus roles personalizados.
-   * Un collection() normal no sirve aqui: necesitaria el id del tenant desde el
-   * primer instante, y ese llega de forma asincrona (depende de `tenants`).
+   * En cuanto se conoce el proveedor a administrar se piden sus roles personalizados.
+   * Funciona tanto para ADMIN_ISP (su tenant) como para SUPER_ADMIN (tenant elegido).
    */
   private readonly loadRolesEffect = effect(() => {
-    const tenantId = this.tenant()?.id;
+    const tenantId = this.managedRoleTenant()?.id;
     if (tenantId && this.canManageRoles()) {
       this.loadRoles(tenantId);
+    } else {
+      this.customRoles.set([]);
     }
+  });
+
+  /** Para el Super Admin en "Nuevo usuario": carga los roles del proveedor seleccionado. */
+  private readonly loadUserModalRolesEffect = effect(() => {
+    if (!this.isSuperAdmin() || !this.addingUser()) {
+      return;
+    }
+    const tenantId = this.selectedUserTenantId();
+    if (!tenantId) {
+      this.userModalRoles.set([]);
+      return;
+    }
+    this.api
+      .roles(tenantId)
+      .pipe(catchError(() => of([] as CustomRole[])))
+      .subscribe((roles) => this.userModalRoles.set(roles));
   });
 
   protected customRoleName(customRoleId: string | null): string | null {
@@ -226,6 +281,19 @@ export class SettingsComponent {
       return null;
     }
     return this.customRoles().find((r) => r.id === customRoleId)?.name ?? null;
+  }
+
+  protected pageLabel(path: string): { label: string; icon: string } {
+    const found = this.navItemIndex.get(path);
+    return found ? { label: found.label, icon: found.icon } : { label: path, icon: 'fas fa-circle' };
+  }
+
+  protected isRoleEnabled(role: CustomRole): boolean {
+    return role.enabled !== false;
+  }
+
+  protected assignedUsersCount(roleId: string): number {
+    return this.users.value().filter((u) => u.customRoleId === roleId).length;
   }
 
   protected readonly integrations = computed(() => {
@@ -355,14 +423,22 @@ export class SettingsComponent {
   // ---------- Roles personalizados ----------
 
   protected openCreateRole(): void {
+    if (!this.canManageRoles() || !this.managedRoleTenant()) {
+      return;
+    }
     this.roleForm.reset({ name: '', description: '' });
-    this.selectedPermissions.set(new Set());
+    this.selectedPermissions.set(new Set(['dashboard']));
+    this.roleEnabled.set(true);
     this.editingRole.set('new');
   }
 
   protected openEditRole(role: CustomRole): void {
+    if (!this.canManageRoles()) {
+      return;
+    }
     this.roleForm.reset({ name: role.name, description: role.description ?? '' });
     this.selectedPermissions.set(new Set(role.permissions));
+    this.roleEnabled.set(role.enabled !== false);
     this.editingRole.set(role);
   }
 
@@ -386,31 +462,69 @@ export class SettingsComponent {
     return this.selectedPermissions().has(key);
   }
 
+  protected applyBaseRolePreset(role: Role): void {
+    const summary = getRolePermissionSummary(role, this.managedRoleTenant());
+    this.selectedPermissions.set(new Set(summary.pages.map((p) => p.path)));
+  }
+
+  protected selectAllPermissions(): void {
+    this.selectedPermissions.set(new Set(this.allNavPaths));
+  }
+
+  protected clearAllPermissions(): void {
+    this.selectedPermissions.set(new Set());
+  }
+
+  protected isSectionAllSelected(items: { path: string }[]): boolean {
+    const current = this.selectedPermissions();
+    return items.every((item) => current.has(item.path));
+  }
+
+  protected toggleSectionPermissions(items: { path: string }[]): void {
+    const selectAll = !this.isSectionAllSelected(items);
+    this.selectedPermissions.update((set) => {
+      const next = new Set(set);
+      for (const item of items) {
+        if (selectAll) {
+          next.add(item.path);
+        } else {
+          next.delete(item.path);
+        }
+      }
+      return next;
+    });
+  }
+
   protected saveRole(): void {
-    const tenantId = this.tenant()?.id;
+    const tenantId = this.managedRoleTenant()?.id;
     const target = this.editingRole();
-    if (!tenantId || !target || this.roleForm.invalid || this.saving()) {
+    if (!this.canManageRoles() || !tenantId || !target || this.roleForm.invalid || this.saving()) {
       this.roleForm.markAllAsTouched();
       return;
     }
     const raw = this.roleForm.getRawValue();
-    const body = {
-      name: raw.name,
-      description: raw.description || null,
-      permissions: [...this.selectedPermissions()],
-    };
+    const permissions = [...this.selectedPermissions()];
     this.saving.set(true);
 
     const request$ =
       target === 'new'
-        ? this.api.createRole(tenantId, body)
-        : this.api.updateRole(tenantId, target.id, body);
+        ? this.api.createRole(tenantId, {
+            name: raw.name,
+            description: raw.description || null,
+            permissions,
+          })
+        : this.api.updateRole(tenantId, target.id, {
+            name: raw.name,
+            description: raw.description || null,
+            permissions,
+            enabled: this.roleEnabled(),
+          });
 
     request$.subscribe({
       next: () => {
         this.saving.set(false);
         this.editingRole.set(null);
-        this.toast.success(target === 'new' ? 'Rol creado.' : 'Rol actualizado.');
+        this.toast.success(target === 'new' ? 'Rol creado.' : 'Permisos del rol actualizados.');
         this.loadRoles(tenantId);
         this.tenantService.refresh();
       },
@@ -421,9 +535,29 @@ export class SettingsComponent {
     });
   }
 
+  protected toggleRoleStatus(role: CustomRole, enabled: boolean): void {
+    const tenantId = this.managedRoleTenant()?.id;
+    if (!this.canManageRoles() || !tenantId || this.busyRoleId()) {
+      return;
+    }
+    this.busyRoleId.set(role.id);
+    this.api.updateRoleStatus(tenantId, role.id, enabled).subscribe({
+      next: (updated) => {
+        this.busyRoleId.set(null);
+        this.customRoles.update((list) => list.map((r) => (r.id === updated.id ? updated : r)));
+        this.toast.success(enabled ? `Rol "${role.name}" habilitado.` : `Rol "${role.name}" deshabilitado.`);
+        this.tenantService.refresh();
+      },
+      error: (err: unknown) => {
+        this.busyRoleId.set(null);
+        this.toast.error(describeHttpError(err));
+      },
+    });
+  }
+
   protected deleteRole(role: CustomRole): void {
-    const tenantId = this.tenant()?.id;
-    if (!tenantId || this.busyRoleId()) {
+    const tenantId = this.managedRoleTenant()?.id;
+    if (!this.canManageRoles() || !tenantId || this.busyRoleId()) {
       return;
     }
     if (!confirm(`¿Eliminar el rol "${role.name}"? Esto no se puede deshacer.`)) {
