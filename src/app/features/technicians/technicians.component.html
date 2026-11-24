@@ -1,0 +1,296 @@
+<div class="page">
+  <app-page-head
+    title="Gestion de tecnicos"
+    subtitle="Cuadrilla, disponibilidad y ordenes de trabajo en campo"
+  >
+    <button appRipple type="button" class="btn btn-outline btn-sm" (click)="openAddTechnician()">
+      <i class="fas fa-user-plus"></i> Agregar tecnico
+    </button>
+    <button appRipple type="button" class="btn btn-grad btn-sm" (click)="openAddOrder()">
+      <i class="fas fa-plus"></i> Orden de trabajo
+    </button>
+  </app-page-head>
+
+  <div class="grid-2">
+    <div class="card">
+      <div class="card-header">
+        <h3>Cuadrilla</h3>
+        <span class="badge badge-success">{{ crewStats().available }} disponible(s)</span>
+      </div>
+
+      <app-async-state
+        [loading]="technicians.loading()"
+        [error]="technicians.error()"
+        [empty]="technicians.value().length === 0"
+        emptyIcon="fas fa-user-gear"
+        emptyTitle="Sin tecnicos registrados"
+        emptyText="Agrega el primer tecnico para poder asignarle tickets y ordenes."
+        (retry)="technicians.reload()"
+      />
+
+      @if (!technicians.loading() && technicians.value().length > 0) {
+        <div class="card-body">
+          @for (tech of technicians.value(); track tech.id) {
+            <div class="list-row">
+              <span class="avatar-sm" style="background: var(--success-light); color: var(--success)">
+                {{ initials(tech.fullName) }}
+              </span>
+              <div class="flex-1">
+                <div class="cell-main">{{ tech.fullName }}</div>
+                <div class="cell-sub">{{ tech.phone || 'Sin telefono' }}</div>
+              </div>
+              <div class="row-wrap">
+                @for (status of statuses; track status.value) {
+                  <button
+                    type="button"
+                    class="badge"
+                    [class.badge-violet]="tech.status === status.value"
+                    [class.badge-gray]="tech.status !== status.value"
+                    style="cursor: pointer; border: none; font-family: inherit"
+                    [disabled]="busyId() === tech.id"
+                    [title]="'Marcar como ' + status.text"
+                    (click)="setStatus(tech, status.value)"
+                  >
+                    {{ status.text }}
+                  </button>
+                }
+              </div>
+            </div>
+          }
+        </div>
+      }
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <h3>Ordenes de hoy</h3>
+        <span class="badge badge-info">{{ todayOrders().length }} agendada(s)</span>
+      </div>
+
+      @if (orders.loading() || orders.error()) {
+        <app-async-state
+          [loading]="orders.loading()"
+          [error]="orders.error()"
+          (retry)="orders.reload()"
+        />
+      } @else if (todayOrders().length === 0) {
+        <div class="empty">
+          <i class="fas fa-calendar-check"></i>
+          <div class="empty-title">Sin visitas para hoy</div>
+          <p>Agenda una orden de trabajo para la cuadrilla.</p>
+        </div>
+      } @else {
+        <div class="card-body">
+          @for (order of todayOrders(); track order.id) {
+            <div class="list-row">
+              <div class="dot-ico" style="background: var(--purple-light); color: #7c3aed">
+                <i class="{{ orderIcon(order.type) }}"></i>
+              </div>
+              <div class="flex-1">
+                <div class="cell-main">
+                  {{ orderTypeLabel(order.type).text }} · {{ clientName(order.clientId) }}
+                </div>
+                <div class="cell-sub">
+                  {{ order.scheduledAt | date: 'HH:mm' }} ·
+                  {{ order.address || 'Sin direccion' }} ·
+                  {{ technicianName(order.technicianId) }}
+                </div>
+              </div>
+              <span class="badge {{ orderStatusLabel(order.status).badge }}">
+                {{ orderStatusLabel(order.status).text }}
+              </span>
+            </div>
+          }
+        </div>
+      }
+    </div>
+  </div>
+
+  <div class="card" style="margin-top: 1rem">
+    <div class="card-header">
+      <h3>Ordenes pendientes</h3>
+      <span class="sub">Agendadas y en curso, de la mas proxima a la mas lejana</span>
+    </div>
+
+    @if (pendingOrders().length === 0 && !orders.loading()) {
+      <div class="empty">
+        <i class="fas fa-clipboard-check"></i>
+        <div class="empty-title">Nada pendiente en campo</div>
+        <p>Todas las ordenes estan completadas o canceladas.</p>
+      </div>
+    } @else if (pendingOrders().length > 0) {
+      <div class="table-wrap">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Tipo</th>
+              <th>Cliente</th>
+              <th>Direccion</th>
+              <th>Tecnico</th>
+              <th>Agendada</th>
+              <th>Estado</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (order of pendingOrders(); track order.id) {
+              <tr>
+                <td>
+                  <i class="{{ orderIcon(order.type) }}" style="color: var(--brand-1); margin-right: 0.5rem"></i>
+                  <span class="cell-main">{{ orderTypeLabel(order.type).text }}</span>
+                </td>
+                <td>{{ clientName(order.clientId) }}</td>
+                <td class="cell-sub">{{ order.address || '—' }}</td>
+                <td>{{ technicianName(order.technicianId) }}</td>
+                <td class="cell-sub">
+                  {{ order.scheduledAt ? (order.scheduledAt | date: 'dd/MM/yyyy HH:mm') : 'Sin fecha' }}
+                </td>
+                <td>
+                  <span class="badge {{ orderStatusLabel(order.status).badge }}">
+                    {{ orderStatusLabel(order.status).text }}
+                  </span>
+                </td>
+                <td class="actions">
+                  <button
+                    type="button"
+                    class="btn btn-outline btn-sm"
+                    [disabled]="busyId() === order.id"
+                    (click)="complete(order)"
+                  >
+                    @if (busyId() === order.id) {
+                      <i class="fas fa-circle-notch" style="animation: spinSlow 1s linear infinite"></i>
+                    } @else {
+                      <i class="fas fa-check"></i> Completar
+                    }
+                  </button>
+                </td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+    }
+  </div>
+</div>
+
+@if (addingTechnician()) {
+  <app-modal title="Agregar tecnico" (close)="closeModals()">
+    <form [formGroup]="technicianForm" (ngSubmit)="saveTechnician()" id="tech-form">
+      <div class="form-group">
+        <label for="tc-name">Nombre completo</label>
+        <input id="tc-name" class="form-control" formControlName="fullName" placeholder="Julian Diaz" />
+        @if (technicianForm.controls.fullName.touched && technicianForm.controls.fullName.invalid) {
+          <div class="field-error">El nombre es obligatorio.</div>
+        }
+      </div>
+      <div class="form-group">
+        <label for="tc-phone">Telefono</label>
+        <input id="tc-phone" class="form-control" formControlName="phone" placeholder="+57 300…" />
+      </div>
+      <p class="hint">El tecnico entra como disponible y puede recibir tickets de inmediato.</p>
+    </form>
+
+    <ng-container modalFooter>
+      <button type="button" class="btn btn-outline" (click)="closeModals()">Cancelar</button>
+      <button appRipple type="submit" form="tech-form" class="btn btn-grad" [disabled]="saving()">
+        @if (saving()) {
+          <i class="fas fa-circle-notch" style="animation: spinSlow 1s linear infinite"></i>
+          Guardando…
+        } @else {
+          <i class="fas fa-check"></i> Agregar
+        }
+      </button>
+    </ng-container>
+  </app-modal>
+}
+
+@if (addingOrder()) {
+  <app-modal title="Orden de trabajo" wide (close)="closeModals()">
+    <form [formGroup]="orderForm" (ngSubmit)="saveOrder()" id="order-form">
+      <div class="form-row">
+        <div class="form-group">
+          <label for="wo-client">Cliente</label>
+          <select
+            id="wo-client"
+            class="form-control"
+            formControlName="clientId"
+            (change)="onClientChange($any($event.target).value)"
+          >
+            @for (client of clients.value(); track client.id) {
+              <option [value]="client.id">{{ client.fullName }} — {{ client.document }}</option>
+            }
+          </select>
+          @if (clients.value().length === 0) {
+            <div class="field-error">No hay clientes cargados. Crealos primero en CRM.</div>
+          }
+        </div>
+        <div class="form-group">
+          <label for="wo-type">Tipo de trabajo</label>
+          <select id="wo-type" class="form-control" formControlName="type">
+            @for (type of orderTypes; track type.value) {
+              <option [value]="type.value">{{ type.text }}</option>
+            }
+          </select>
+        </div>
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label for="wo-tech">Tecnico</label>
+          <select id="wo-tech" class="form-control" formControlName="technicianId">
+            <option value="">Sin asignar</option>
+            @for (tech of technicians.value(); track tech.id) {
+              <option [value]="tech.id">{{ tech.fullName }}</option>
+            }
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="wo-ticket">Ticket relacionado</label>
+          <select id="wo-ticket" class="form-control" formControlName="ticketId">
+            <option value="">Ninguno</option>
+            @for (ticket of openTickets(); track ticket.id) {
+              <option [value]="ticket.id">
+                {{ ticket.reason }} — {{ clientName(ticket.clientId) }}
+              </option>
+            }
+          </select>
+        </div>
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label for="wo-date">Fecha</label>
+          <input id="wo-date" class="form-control" type="date" formControlName="date" />
+        </div>
+        <div class="form-group">
+          <label for="wo-time">Hora</label>
+          <input id="wo-time" class="form-control" type="time" formControlName="time" />
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label for="wo-address">Direccion de la visita</label>
+        <input id="wo-address" class="form-control" formControlName="address" placeholder="Cra 12 #45-23" />
+        <div class="hint">Se precarga con la direccion del cliente; puedes cambiarla.</div>
+      </div>
+    </form>
+
+    <ng-container modalFooter>
+      <button type="button" class="btn btn-outline" (click)="closeModals()">Cancelar</button>
+      <button
+        appRipple
+        type="submit"
+        form="order-form"
+        class="btn btn-grad"
+        [disabled]="saving() || clients.value().length === 0"
+      >
+        @if (saving()) {
+          <i class="fas fa-circle-notch" style="animation: spinSlow 1s linear infinite"></i>
+          Agendando…
+        } @else {
+          <i class="fas fa-calendar-check"></i> Agendar
+        }
+      </button>
+    </ng-container>
+  </app-modal>
+}

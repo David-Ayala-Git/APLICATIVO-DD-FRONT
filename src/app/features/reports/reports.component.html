@@ -1,0 +1,181 @@
+<div class="page">
+  <app-page-head
+    title="Reportes ejecutivos"
+    subtitle="Indicadores de negocio calculados por el microservicio de reportes"
+  >
+    @if (current.value()) {
+      <span class="badge badge-violet" style="align-self: center">
+        <i class="fas fa-calendar"></i> {{ periodLabel(current.value()!.period) }}
+      </span>
+    }
+    <button
+      appRipple
+      type="button"
+      class="btn btn-grad btn-sm"
+      [disabled]="refreshing()"
+      (click)="refresh()"
+    >
+      @if (refreshing()) {
+        <i class="fas fa-circle-notch" style="animation: spinSlow 1s linear infinite"></i>
+        Recalculando…
+      } @else {
+        <i class="fas fa-rotate"></i> Recalcular periodo
+      }
+    </button>
+  </app-page-head>
+
+  @if (current.loading() || current.error()) {
+    <div class="card">
+      <app-async-state
+        [loading]="current.loading()"
+        [error]="current.error()"
+        (retry)="current.reload()"
+      />
+    </div>
+  } @else if (!current.value()) {
+    <div class="card">
+      <div class="empty">
+        <i class="fas fa-chart-line"></i>
+        <div class="empty-title">Sin reporte generado</div>
+        <p>Pulsa "Recalcular periodo" para que el microservicio genere el primer corte.</p>
+      </div>
+    </div>
+  } @else {
+    <div class="stats-grid">
+      <app-stat-card
+        label="MRR"
+        [value]="copCompact(current.value()!.mrr)"
+        icon="fas fa-dollar-sign"
+        tone="cyan"
+        [note]="mrrTrend() !== null ? percent(mrrTrend()!, 1) + ' vs periodo anterior' : 'Sin historico para comparar'"
+        [trend]="mrrTrend() !== null && mrrTrend()! >= 0 ? 'up' : 'down'"
+      />
+      <app-stat-card
+        label="ARPU"
+        [value]="cop(current.value()!.arpu)"
+        icon="fas fa-coins"
+        tone="violet"
+        note="Ingreso promedio por cliente"
+      />
+      <app-stat-card
+        label="Churn"
+        [value]="percent(current.value()!.churnRate)"
+        icon="fas fa-user-minus"
+        tone="red"
+        [note]="current.value()!.retiredClients + ' retirados'"
+        trend="down"
+      />
+      <app-stat-card
+        label="Efectividad de recaudo"
+        [value]="collectionRate() !== null ? percent(collectionRate()!, 1) : '—'"
+        icon="fas fa-hand-holding-dollar"
+        tone="green"
+        note="Pagado sobre facturado del periodo"
+        trend="up"
+      />
+    </div>
+
+    <div class="grid-2">
+      <div class="card">
+        <div class="card-header">
+          <div>
+            <h3>Clientes activos por periodo</h3>
+            <div class="sub">Serie del historico de reportes</div>
+          </div>
+        </div>
+        <div class="card-body">
+          @if (clientBars().length === 0) {
+            <div class="empty">
+              <i class="fas fa-users"></i>
+              <div class="empty-title">Solo hay un corte</div>
+              <p>La serie se dibuja cuando existan al menos dos periodos generados.</p>
+            </div>
+          } @else {
+            <app-bar-chart [data]="clientBars()" />
+          }
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <div>
+            <h3>MRR por periodo</h3>
+            <div class="sub">Ingreso recurrente mensual</div>
+          </div>
+        </div>
+        <div class="card-body">
+          @if (mrrBars().length === 0) {
+            <div class="empty">
+              <i class="fas fa-chart-column"></i>
+              <div class="empty-title">Sin serie disponible</div>
+              <p>Recalcula el periodo en los proximos meses para construir la tendencia.</p>
+            </div>
+          } @else {
+            <app-bar-chart [data]="mrrBars()" />
+          }
+        </div>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top: 1rem">
+      <div class="card-header">
+        <h3>Historico de cortes</h3>
+        <span class="sub">
+          Ultimo generado: {{ current.value()!.generatedAt | date: 'dd/MM/yyyy HH:mm' }}
+        </span>
+      </div>
+
+      <app-async-state
+        [loading]="history.loading()"
+        [error]="history.error()"
+        [empty]="ordered().length === 0"
+        emptyIcon="fas fa-clock-rotate-left"
+        emptyTitle="Sin historico"
+        emptyText="Cada recalculo deja un corte guardado aqui."
+        (retry)="history.reload()"
+      />
+
+      @if (ordered().length > 0) {
+        <div class="table-wrap">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Periodo</th>
+                <th>MRR</th>
+                <th>ARPU</th>
+                <th>Churn</th>
+                <th>Activos</th>
+                <th>Retirados</th>
+                <th>Total</th>
+                <th>Generado</th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (row of ordered(); track row.period) {
+                <tr>
+                  <td class="cell-main">{{ periodLabel(row.period) }}</td>
+                  <td style="font-weight: 700">{{ cop(row.mrr) }}</td>
+                  <td>{{ cop(row.arpu) }}</td>
+                  <td>
+                    <span
+                      class="badge"
+                      [class.badge-success]="row.churnRate < 2"
+                      [class.badge-warning]="row.churnRate >= 2 && row.churnRate < 5"
+                      [class.badge-danger]="row.churnRate >= 5"
+                    >
+                      {{ percent(row.churnRate) }}
+                    </span>
+                  </td>
+                  <td>{{ row.activeClients }}</td>
+                  <td>{{ row.retiredClients }}</td>
+                  <td>{{ row.totalClients }}</td>
+                  <td class="cell-sub">{{ row.generatedAt | date: 'dd/MM/yyyy HH:mm' }}</td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+      }
+    </div>
+  }
+</div>

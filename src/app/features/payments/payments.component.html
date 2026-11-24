@@ -1,0 +1,312 @@
+<div class="page">
+  <app-page-head
+    title="Pagos"
+    subtitle="Recaudo recibido por pasarela (PSE, Wompi, Nequi) y conciliacion"
+  >
+    <button
+      appRipple
+      type="button"
+      class="btn btn-outline btn-sm"
+      [disabled]="payments.loading()"
+      (click)="reloadAll()"
+    >
+      <i class="fas fa-rotate"></i> Actualizar
+    </button>
+    @if (manualPaymentsEnabled()) {
+      <button appRipple type="button" class="btn btn-grad btn-sm" (click)="openRegister()">
+        <i class="fas fa-plus"></i> Registrar pago manual
+      </button>
+    }
+  </app-page-head>
+
+  <div class="stats-grid">
+    <app-stat-card
+      label="Pagos recibidos"
+      [value]="stats().total"
+      icon="fas fa-credit-card"
+      tone="violet"
+    />
+    <app-stat-card
+      label="Confirmados"
+      [value]="stats().confirmed"
+      icon="fas fa-circle-check"
+      tone="green"
+      [note]="copCompact(stats().confirmedAmount) + ' recaudados'"
+      trend="up"
+    />
+    <app-stat-card
+      label="En proceso"
+      [value]="stats().pending"
+      icon="fas fa-clock"
+      tone="orange"
+    />
+    <app-stat-card
+      label="Rechazados"
+      [value]="stats().failed"
+      icon="fas fa-circle-xmark"
+      tone="red"
+    />
+  </div>
+
+  <div class="alert alert-info" style="margin-bottom: 1rem">
+    <i class="fas fa-circle-info"></i>
+    <span>
+      Los pagos de Wompi y PSE siguen llegando solos por el webhook de la pasarela
+      (<span class="mono">POST /api/payments/webhook</span>) y esta pantalla no los toca. Para
+      efectivo o una transferencia Nequi que confirmaste por fuera de la consola, usa
+      <b>Registrar pago manual</b>: busca la factura pendiente del cliente y la marca como pagada.
+    </span>
+  </div>
+
+  <div class="grid-1-2">
+    <div class="card">
+      <div class="card-header">
+        <h3>Medios de pago</h3>
+        <span class="sub">Sobre el recaudo confirmado</span>
+      </div>
+      <div class="card-body">
+        @if (stats().confirmedAmount === 0) {
+          <div class="empty">
+            <i class="fas fa-chart-pie"></i>
+            <div class="empty-title">Sin recaudo confirmado</div>
+            <p>Cuando la pasarela confirme el primer pago aparecera el reparto.</p>
+          </div>
+        } @else {
+          @for (row of byMethod(); track row.method) {
+            <div style="margin-bottom: 0.9rem">
+              <div class="progress-label">
+                <span>{{ row.label.text }}</span>
+                <b>{{ percent(row.share, 0) }}</b>
+              </div>
+              <div class="progress"><span [style.width.%]="row.share"></span></div>
+              <div class="cell-sub" style="margin-top: 0.25rem">
+                {{ row.count }} pago(s) · {{ cop(row.amount) }}
+              </div>
+            </div>
+          }
+        }
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <h3>Pagos recientes</h3>
+        @if (stats().failed === 0 && stats().pending === 0 && stats().total > 0) {
+          <span class="badge badge-success"><i class="fas fa-circle"></i> Todo conciliado</span>
+        }
+      </div>
+
+      <app-async-state
+        [loading]="payments.loading()"
+        [error]="payments.error()"
+        [empty]="recent().length === 0"
+        emptyIcon="fas fa-credit-card"
+        emptyTitle="Sin pagos registrados"
+        emptyText="Aun no ha llegado ningun pago desde la pasarela."
+        (retry)="payments.reload()"
+      />
+
+      @if (!payments.loading() && !payments.error() && recent().length > 0) {
+        <div class="table-wrap">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Referencia</th>
+                <th>Cliente</th>
+                <th>Periodo</th>
+                <th>Metodo</th>
+                <th>Valor</th>
+                <th>Estado</th>
+                <th>Fecha</th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (payment of recent(); track payment.id) {
+                <tr>
+                  <td class="cell-mono">{{ payment.externalReference || '—' }}</td>
+                  <td class="cell-main">{{ clientOf(payment) }}</td>
+                  <td class="cell-mono">{{ periodOf(payment) }}</td>
+                  <td><span class="badge {{ methodLabel(payment.method).badge }}">{{ methodLabel(payment.method).text }}</span></td>
+                  <td style="font-weight: 700">{{ cop(payment.amount) }}</td>
+                  <td><span class="badge {{ statusLabel(payment.status).badge }}">{{ statusLabel(payment.status).text }}</span></td>
+                  <td class="cell-sub">
+                    {{ payment.paidAt ? (payment.paidAt | date: 'dd/MM/yyyy HH:mm') : '—' }}
+                  </td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+      }
+    </div>
+  </div>
+</div>
+
+@if (registering()) {
+  <app-modal title="Registrar pago manual" wide (close)="close()">
+    <div class="form-group">
+      <label for="pm-search">Buscar cliente con factura pendiente</label>
+      <div class="topbar-search" style="width: 100%">
+        <i class="fas fa-search"></i>
+        <input
+          id="pm-search"
+          placeholder="Nombre, documento o periodo (2026-10)…"
+          [value]="search()"
+          (input)="search.set($any($event.target).value)"
+        />
+      </div>
+    </div>
+
+    @if (invoices.loading() || clients.loading()) {
+      <div class="loading-row">
+        <i class="fas fa-circle-notch"></i>
+        Cargando facturas pendientes…
+      </div>
+    } @else if (filteredPayable().length === 0) {
+      <div class="empty">
+        <i class="fas fa-circle-check"></i>
+        <div class="empty-title">
+          @if (payable().length === 0) {
+            Nadie tiene facturas pendientes
+          } @else {
+            Sin coincidencias
+          }
+        </div>
+        <p>
+          @if (payable().length === 0) {
+            Todos los clientes estan al dia o aun no se ha generado la facturacion del periodo.
+          } @else {
+            Ajusta la busqueda por nombre, documento o periodo (AAAA-MM).
+          }
+        </p>
+      </div>
+    } @else {
+      <div style="max-height: 260px; overflow-y: auto; border: 1px solid var(--border); border-radius: var(--radius)">
+        @for (row of filteredPayable(); track row.invoice.id) {
+          <button
+            type="button"
+            class="list-row"
+            style="
+              width: 100%;
+              border: none;
+              background: transparent;
+              font-family: inherit;
+              text-align: left;
+              cursor: pointer;
+              margin: 0;
+              padding-left: 0.8rem;
+              padding-right: 0.8rem;
+            "
+            [style.background]="selectedInvoiceId() === row.invoice.id ? 'var(--purple-light)' : null"
+            [style.box-shadow]="
+              selectedInvoiceId() === row.invoice.id ? 'inset 3px 0 0 var(--brand-1)' : null
+            "
+            (click)="selectInvoice(row)"
+          >
+            <span class="avatar-sm">{{ initials(row.client.fullName) }}</span>
+            <div class="flex-1">
+              <div class="cell-main">{{ row.client.fullName }}</div>
+              <div class="cell-sub">
+                {{ row.client.document }} · {{ row.invoice.period }} · vence
+                {{ row.invoice.dueDate | date: 'dd/MM/yyyy' }}
+              </div>
+            </div>
+            <span class="badge {{ invoiceLabel(row.invoice.status).badge }}">
+              {{ invoiceLabel(row.invoice.status).text }}
+            </span>
+            <b style="margin-left: 0.6rem; white-space: nowrap">{{ cop(row.invoice.amount) }}</b>
+            @if (selectedInvoiceId() === row.invoice.id) {
+              <i class="fas fa-circle-check" style="color: var(--primary); margin-left: 0.6rem"></i>
+            }
+          </button>
+        }
+      </div>
+    }
+
+    @if (selected()) {
+      <form
+        [formGroup]="manualForm"
+        (ngSubmit)="confirmPayment()"
+        id="manual-payment-form"
+        style="margin-top: 1.1rem; padding-top: 1.1rem; border-top: 1px solid var(--border)"
+      >
+        <div class="alert alert-info" style="margin-bottom: 1rem">
+          <i class="fas fa-user-check"></i>
+          <span>
+            Vas a registrar el pago de <b>{{ selected()!.client.fullName }}</b> por la factura del
+            periodo <b>{{ selected()!.invoice.period }}</b>.
+          </span>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label for="pm-method">Metodo de pago</label>
+            <select
+              id="pm-method"
+              class="form-control"
+              formControlName="method"
+              (change)="onMethodChange($any($event.target).value)"
+            >
+              @for (m of manualMethods; track m.value) {
+                <option [value]="m.value">{{ m.text }}</option>
+              }
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="pm-amount">Valor recibido</label>
+            <input
+              id="pm-amount"
+              class="form-control mono"
+              type="number"
+              min="1"
+              formControlName="amount"
+            />
+            @if (manualForm.controls.amount.touched && manualForm.controls.amount.invalid) {
+              <div class="field-error">El valor debe ser mayor que cero.</div>
+            }
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label for="pm-ref">Referencia</label>
+          <input
+            id="pm-ref"
+            class="form-control"
+            formControlName="externalReference"
+            [placeholder]="selectedMethod().placeholder"
+          />
+          @if (
+            manualForm.controls.externalReference.touched &&
+            manualForm.controls.externalReference.invalid
+          ) {
+            <div class="field-error">La referencia es obligatoria para dejar trazabilidad.</div>
+          }
+        </div>
+
+        <p class="hint">
+          Al confirmar, la factura queda <b>PAGADA</b> en su totalidad: el sistema todavia no
+          maneja abonos parciales, asi que si el valor recibido no coincide con el total de la
+          factura, revisalo con cartera antes de continuar.
+        </p>
+      </form>
+    }
+
+    <ng-container modalFooter>
+      <button type="button" class="btn btn-outline" (click)="close()">Cancelar</button>
+      <button
+        appRipple
+        type="submit"
+        form="manual-payment-form"
+        class="btn btn-grad"
+        [disabled]="!selected() || saving()"
+      >
+        @if (saving()) {
+          <i class="fas fa-circle-notch" style="animation: spinSlow 1s linear infinite"></i>
+          Registrando…
+        } @else {
+          <i class="fas fa-check"></i> Confirmar pago
+        }
+      </button>
+    </ng-container>
+  </app-modal>
+}

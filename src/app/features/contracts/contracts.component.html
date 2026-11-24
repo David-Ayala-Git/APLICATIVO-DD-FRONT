@@ -1,0 +1,187 @@
+<div class="page">
+  <app-page-head
+    title="Contratos y documentos"
+    subtitle="Expediente digital del cliente y estado de firma"
+  >
+    <button
+      appRipple
+      type="button"
+      class="btn btn-outline btn-sm"
+      [disabled]="contracts.loading()"
+      (click)="contracts.reload()"
+    >
+      <i class="fas fa-rotate"></i> Actualizar
+    </button>
+    <button appRipple type="button" class="btn btn-grad btn-sm" (click)="openCreate()">
+      <i class="fas fa-plus"></i> Nuevo contrato
+    </button>
+  </app-page-head>
+
+  <div class="stats-grid">
+    <app-stat-card
+      label="Contratos registrados"
+      [value]="stats().total"
+      icon="fas fa-file-signature"
+      tone="violet"
+    />
+    <app-stat-card
+      label="Firmados"
+      [value]="stats().signed"
+      icon="fas fa-signature"
+      tone="green"
+      trend="up"
+    />
+    <app-stat-card
+      label="Esperando firma"
+      [value]="stats().draft"
+      icon="fas fa-hourglass-half"
+      tone="orange"
+    />
+    <app-stat-card
+      label="Anulados"
+      [value]="stats().cancelled"
+      icon="fas fa-file-circle-xmark"
+      tone="red"
+    />
+  </div>
+
+  <div class="card">
+    <div class="card-header">
+      <h3>Expediente de contratos</h3>
+      @if (stats().draft > 0) {
+        <span class="badge badge-warning">{{ stats().draft }} pendiente(s) de firma</span>
+      }
+    </div>
+
+    <app-async-state
+      [loading]="contracts.loading()"
+      [error]="contracts.error()"
+      [empty]="rows().length === 0"
+      emptyIcon="fas fa-file-signature"
+      emptyTitle="Sin contratos registrados"
+      emptyText="Crea el contrato del cliente para dejar constancia del plan y la permanencia."
+      (retry)="contracts.reload()"
+    />
+
+    @if (!contracts.loading() && !contracts.error() && rows().length > 0) {
+      <div class="table-wrap">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Cliente</th>
+              <th>Plan contratado</th>
+              <th>Estado</th>
+              <th>Firmado</th>
+              <th>Creado</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (contract of rows(); track contract.id) {
+              <tr>
+                <td>
+                  <i class="fas fa-file-contract" style="color: var(--brand-1); margin-right: 0.5rem"></i>
+                  <span class="cell-main">{{ clientName(contract.clientId) }}</span>
+                </td>
+                <td><span class="badge badge-violet">{{ planName(contract.planId) }}</span></td>
+                <td><app-status-badge [label]="statusLabel(contract.status)" /></td>
+                <td class="cell-sub">
+                  {{ contract.signedAt ? (contract.signedAt | date: 'dd/MM/yyyy HH:mm') : '—' }}
+                </td>
+                <td class="cell-sub">{{ contract.createdAt | date: 'dd/MM/yyyy' }}</td>
+                <td class="actions">
+                  @if (contract.documentUrl) {
+                    <a
+                      class="btn btn-ghost btn-icon"
+                      [href]="contract.documentUrl"
+                      target="_blank"
+                      rel="noopener"
+                      title="Abrir documento"
+                    >
+                      <i class="fas fa-download"></i>
+                    </a>
+                  }
+                  @if (contract.status === 'DRAFT') {
+                    <button
+                      type="button"
+                      class="btn btn-accent btn-sm"
+                      [disabled]="signingId() === contract.id"
+                      (click)="sign(contract)"
+                    >
+                      @if (signingId() === contract.id) {
+                        <i class="fas fa-circle-notch" style="animation: spinSlow 1s linear infinite"></i>
+                      } @else {
+                        <i class="fas fa-signature"></i> Marcar firmado
+                      }
+                    </button>
+                  }
+                </td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+    }
+  </div>
+</div>
+
+@if (creating()) {
+  <app-modal title="Nuevo contrato" (close)="close()">
+    <form [formGroup]="form" (ngSubmit)="save()" id="contract-form">
+      <div class="form-group">
+        <label for="ct-client">Cliente</label>
+        <select id="ct-client" class="form-control" formControlName="clientId">
+          @for (client of clients.value(); track client.id) {
+            <option [value]="client.id">{{ client.fullName }} — {{ client.document }}</option>
+          }
+        </select>
+        @if (clients.value().length === 0) {
+          <div class="field-error">No hay clientes cargados. Crealos primero en CRM.</div>
+        }
+      </div>
+
+      <div class="form-group">
+        <label for="ct-plan">Plan contratado</label>
+        <select id="ct-plan" class="form-control" formControlName="planId">
+          @for (plan of plans.value(); track plan.id) {
+            <option [value]="plan.id">{{ plan.name }}</option>
+          }
+        </select>
+        @if (plans.value().length === 0) {
+          <div class="field-error">No hay planes en el catalogo. Crealos en Planes.</div>
+        }
+      </div>
+
+      <div class="form-group">
+        <label for="ct-doc">URL del documento</label>
+        <input
+          id="ct-doc"
+          class="form-control"
+          formControlName="documentUrl"
+          placeholder="https://… (PDF del contrato)"
+        />
+        <div class="hint">
+          Opcional. El contrato queda en borrador hasta que registres la firma.
+        </div>
+      </div>
+    </form>
+
+    <ng-container modalFooter>
+      <button type="button" class="btn btn-outline" (click)="close()">Cancelar</button>
+      <button
+        appRipple
+        type="submit"
+        form="contract-form"
+        class="btn btn-grad"
+        [disabled]="saving() || clients.value().length === 0 || plans.value().length === 0"
+      >
+        @if (saving()) {
+          <i class="fas fa-circle-notch" style="animation: spinSlow 1s linear infinite"></i>
+          Guardando…
+        } @else {
+          <i class="fas fa-check"></i> Crear contrato
+        }
+      </button>
+    </ng-container>
+  </app-modal>
+}

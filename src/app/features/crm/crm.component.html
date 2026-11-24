@@ -1,0 +1,252 @@
+<div class="page">
+  <app-page-head
+    title="CRM de clientes"
+    subtitle="Gestiona clientes, servicios y estado de conexion por proveedor"
+  >
+    <button
+      appRipple
+      type="button"
+      class="btn btn-outline btn-sm"
+      [disabled]="clients.loading()"
+      (click)="clients.reload()"
+    >
+      <i class="fas fa-rotate"></i> Actualizar
+    </button>
+    <button appRipple type="button" class="btn btn-grad btn-sm" (click)="openCreate()">
+      <i class="fas fa-plus"></i> Nuevo cliente
+    </button>
+  </app-page-head>
+
+  <div class="stats-grid">
+    <app-stat-card
+      label="Clientes totales"
+      [value]="counts().total"
+      icon="fas fa-users"
+      tone="violet"
+    />
+    <app-stat-card
+      label="Activos"
+      [value]="counts().active"
+      icon="fas fa-user-check"
+      tone="green"
+    />
+    <app-stat-card
+      label="Suspendidos"
+      [value]="counts().suspended"
+      icon="fas fa-user-clock"
+      tone="orange"
+    />
+    <app-stat-card
+      label="Retirados"
+      [value]="counts().retired"
+      icon="fas fa-user-xmark"
+      tone="red"
+    />
+  </div>
+
+  <div class="card">
+    <div class="card-header">
+      <div class="topbar-search" style="width: 280px">
+        <i class="fas fa-search"></i>
+        <input
+          placeholder="Buscar por nombre, documento, IP u ONU…"
+          [value]="search()"
+          (input)="search.set($any($event.target).value)"
+          aria-label="Buscar cliente"
+        />
+      </div>
+      <div class="row-wrap">
+        @for (opt of statusOptions; track opt.value) {
+          <button
+            type="button"
+            class="badge"
+            [class.badge-violet]="statusFilter() === opt.value"
+            [class.badge-gray]="statusFilter() !== opt.value"
+            style="cursor: pointer; border: none; font-family: inherit"
+            (click)="statusFilter.set(opt.value)"
+          >
+            {{ opt.text }}
+          </button>
+        }
+      </div>
+    </div>
+
+    <app-async-state
+      [loading]="clients.loading()"
+      [error]="clients.error()"
+      [empty]="filtered().length === 0"
+      emptyIcon="fas fa-user-plus"
+      emptyTitle="No hay clientes que coincidan"
+      emptyText="Crea el primer cliente o ajusta el filtro de busqueda."
+      (retry)="clients.reload()"
+    />
+
+    @if (!clients.loading() && !clients.error() && filtered().length > 0) {
+      <div class="table-wrap">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Cliente</th>
+              <th>Plan</th>
+              <th>IP / ONU</th>
+              <th>Estado</th>
+              <th>Telefono</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (client of filtered(); track client.id) {
+              <tr>
+                <td>
+                  <span class="avatar-sm">{{ initials(client.fullName) }}</span>
+                  <span class="cell-main">{{ client.fullName }}</span>
+                  <div class="cell-sub">
+                    {{ client.address || 'Sin direccion' }} · {{ client.document }}
+                  </div>
+                </td>
+                <td>
+                  <span class="badge {{ planBadge(client.planId).badge }}">
+                    {{ planName(client.planId) }}
+                  </span>
+                </td>
+                <td class="cell-mono">
+                  {{ client.ipAddress || '—' }}
+                  <div class="cell-sub">{{ client.onuSerial || 'Sin ONU' }}</div>
+                </td>
+                <td><app-status-badge [label]="statusLabel(client.status)" /></td>
+                <td>{{ client.phone || '—' }}</td>
+                <td class="actions">
+                  <button
+                    type="button"
+                    class="btn btn-ghost btn-icon"
+                    title="Editar cliente"
+                    (click)="openEdit(client)"
+                  >
+                    <i class="fas fa-pen"></i>
+                  </button>
+                </td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+    }
+  </div>
+</div>
+
+@if (editing()) {
+  <app-modal
+    [title]="editing() === 'new' ? 'Nuevo cliente' : 'Editar cliente'"
+    (close)="closeModal()"
+  >
+    <form [formGroup]="form" (ngSubmit)="save()" id="client-form">
+      <div class="form-row">
+        <div class="form-group">
+          <label for="c-name">Nombre completo</label>
+          <input id="c-name" class="form-control" formControlName="fullName" placeholder="Ej. Carlos Martinez" />
+          @if (form.controls.fullName.touched && form.controls.fullName.invalid) {
+            <div class="field-error">El nombre es obligatorio.</div>
+          }
+        </div>
+        <div class="form-group">
+          <label for="c-doc">Documento</label>
+          <input id="c-doc" class="form-control" formControlName="document" placeholder="CC / NIT" />
+          @if (editing() !== 'new') {
+            <div class="hint">El documento identifica al cliente y no se edita.</div>
+          } @else if (form.controls.document.touched && form.controls.document.invalid) {
+            <div class="field-error">El documento es obligatorio.</div>
+          }
+        </div>
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label for="c-phone">Telefono</label>
+          <input id="c-phone" class="form-control" formControlName="phone" placeholder="+57" />
+        </div>
+        <div class="form-group">
+          <label for="c-plan">Plan</label>
+          <select id="c-plan" class="form-control" formControlName="planId">
+            <option value="">Sin plan asignado</option>
+            @for (plan of plans.value(); track plan.id) {
+              <option [value]="plan.id">
+                {{ plan.name }} · {{ plan.downMbps }}/{{ plan.upMbps }} Mbps
+              </option>
+            }
+          </select>
+          @if (plans.value().length === 0 && !plans.loading()) {
+            <div class="hint">Aun no hay planes. Crealos en la seccion Planes.</div>
+          }
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label for="c-address">Direccion de instalacion</label>
+        <input id="c-address" class="form-control" formControlName="address" placeholder="Cra 12 #45-23" />
+      </div>
+
+      @if (editing() !== 'new') {
+        <div class="form-row">
+          <div class="form-group">
+            <label for="c-status">Estado</label>
+            <select id="c-status" class="form-control" formControlName="status">
+              <option value="ACTIVE">Activo</option>
+              <option value="SUSPENDED">Suspendido</option>
+              <option value="RETIRED">Retirado</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="c-ip">IP asignada</label>
+            <input id="c-ip" class="form-control mono" formControlName="ipAddress" placeholder="10.20.1.42" />
+          </div>
+        </div>
+        <div class="form-group">
+          <label for="c-onu">Serial de ONU</label>
+          <input id="c-onu" class="form-control mono" formControlName="onuSerial" placeholder="HWTC-A1B2C3" />
+          <div class="hint">
+            Suspender aqui no corta el servicio en la red: el corte se ejecuta desde Activaciones o
+            MikroTik.
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label for="c-router">Router MikroTik</label>
+            <select id="c-router" class="form-control" formControlName="routerId">
+              <option value="">Sin asignar</option>
+              @for (router of routers.value(); track router.id) {
+                <option [value]="router.id">{{ router.name }}</option>
+              }
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="c-pppoe">Usuario PPPoE</label>
+            <input id="c-pppoe" class="form-control mono" formControlName="pppoeUser" placeholder="cliente.gomez" />
+          </div>
+        </div>
+        <div class="hint">
+          Con router y usuario PPPoE, la automatizacion de n8n puede cortar por mora y reactivar al
+          confirmarse el pago.
+        </div>
+      }
+    </form>
+
+    <ng-container modalFooter>
+      <button type="button" class="btn btn-outline" (click)="closeModal()">Cancelar</button>
+      <button
+        appRipple
+        type="submit"
+        form="client-form"
+        class="btn btn-grad"
+        [disabled]="saving()"
+      >
+        @if (saving()) {
+          <i class="fas fa-circle-notch" style="animation: spinSlow 1s linear infinite"></i>
+          Guardando…
+        } @else {
+          <i class="fas fa-check"></i>
+          {{ editing() === 'new' ? 'Crear cliente' : 'Guardar cambios' }}
+        }
+      </button>
+    </ng-container>
+  </app-modal>
+}

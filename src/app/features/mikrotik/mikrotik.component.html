@@ -1,0 +1,312 @@
+<div class="page">
+  <app-page-head
+    title="Gestion de MikroTik"
+    subtitle="Routers, colas (queues), PPPoE, cortes y reactivacion via RouterOS API"
+  >
+    <button
+      appRipple
+      type="button"
+      class="btn btn-outline btn-sm"
+      [disabled]="routers.loading()"
+      (click)="routers.reload()"
+    >
+      <i class="fas fa-rotate"></i> Sincronizar
+    </button>
+    <button appRipple type="button" class="btn btn-grad btn-sm" (click)="openAddRouter()">
+      <i class="fas fa-plus"></i> Anadir router
+    </button>
+  </app-page-head>
+
+  <div class="stats-grid">
+    <app-stat-card
+      label="Routers registrados"
+      [value]="stats().total"
+      icon="fas fa-server"
+      tone="violet"
+    />
+    <app-stat-card
+      label="En linea"
+      [value]="stats().online"
+      icon="fas fa-circle-check"
+      tone="green"
+      [note]="stats().total > 0 && stats().online === stats().total ? 'Todos responden' : ''"
+      trend="up"
+    />
+    <app-stat-card
+      label="Fuera de linea"
+      [value]="stats().offline"
+      icon="fas fa-plug-circle-xmark"
+      tone="red"
+    />
+    <app-stat-card
+      label="Con error de API"
+      [value]="stats().error"
+      icon="fas fa-triangle-exclamation"
+      tone="orange"
+    />
+  </div>
+
+  <div class="grid-2">
+    <div class="card">
+      <div class="card-header">
+        <h3>Routers registrados</h3>
+        <span class="badge badge-info">RouterOS API</span>
+      </div>
+
+      <app-async-state
+        [loading]="routers.loading()"
+        [error]="routers.error()"
+        [empty]="routers.value().length === 0"
+        emptyIcon="fas fa-server"
+        emptyTitle="Ningun router vinculado"
+        emptyText="Anade el primer router con un usuario de API dedicado."
+        (retry)="routers.reload()"
+      />
+
+      @if (!routers.loading() && !routers.error() && routers.value().length > 0) {
+        <div class="table-wrap">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Router</th>
+                <th>Host / API</th>
+                <th>Usuario</th>
+                <th>Estado</th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (router of routers.value(); track router.id) {
+                <tr>
+                  <td>
+                    <div class="cell-main">{{ router.name }}</div>
+                    <div class="cell-sub">{{ router.model || 'Modelo no indicado' }}</div>
+                  </td>
+                  <td class="cell-mono">{{ router.host }}:{{ router.apiPort }}</td>
+                  <td class="cell-mono">{{ router.apiUser }}</td>
+                  <td><app-status-badge [label]="statusLabel(router.status)" /></td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+      }
+    </div>
+
+    <div class="card">
+      <div class="card-header"><h3>Acciones rapidas</h3></div>
+      <div class="card-body">
+        <p class="text-secondary" style="font-size: 0.82rem; margin-bottom: 1rem">
+          Ejecuta comandos sobre un cliente sin abrir Winbox. El microservicio registra cada
+          operacion en la bitacora de auditoria.
+        </p>
+
+        @if (routers.value().length === 0) {
+          <div class="alert alert-warning">
+            <i class="fas fa-circle-info"></i>
+            <span>Vincula al menos un router para poder ejecutar acciones.</span>
+          </div>
+        } @else {
+          <div class="list-row">
+            <div class="dot-ico" style="background: var(--danger-light); color: var(--danger)">
+              <i class="fas fa-ban"></i>
+            </div>
+            <div class="flex-1">
+              <div class="cell-main">Cortar por mora</div>
+              <div class="cell-sub">Deshabilita el PPPoE secret del cliente</div>
+            </div>
+            <button type="button" class="btn btn-outline btn-sm" (click)="openAction('cut')">
+              Ejecutar
+            </button>
+          </div>
+
+          <div class="list-row">
+            <div class="dot-ico" style="background: var(--success-light); color: var(--success)">
+              <i class="fas fa-play"></i>
+            </div>
+            <div class="flex-1">
+              <div class="cell-main">Reactivar cliente</div>
+              <div class="cell-sub">Restaura el secret tras registrar el pago</div>
+            </div>
+            <button type="button" class="btn btn-outline btn-sm" (click)="openAction('enable')">
+              Ejecutar
+            </button>
+          </div>
+
+          <div class="list-row">
+            <div class="dot-ico" style="background: var(--accent-light); color: var(--accent-dark)">
+              <i class="fas fa-gauge-high"></i>
+            </div>
+            <div class="flex-1">
+              <div class="cell-main">Cambiar velocidad</div>
+              <div class="cell-sub">Aplica un nuevo limite al simple queue</div>
+            </div>
+            <button type="button" class="btn btn-outline btn-sm" (click)="openAction('queue')">
+              Ejecutar
+            </button>
+          </div>
+        }
+      </div>
+    </div>
+  </div>
+</div>
+
+@if (addingRouter()) {
+  <app-modal title="Anadir router MikroTik" (close)="closeModals()">
+    <form [formGroup]="routerForm" (ngSubmit)="saveRouter()" id="router-form">
+      <div class="form-group">
+        <label for="r-name">Nombre</label>
+        <input id="r-name" class="form-control" formControlName="name" placeholder="MK-Centro-01" />
+        @if (routerForm.controls.name.touched && routerForm.controls.name.invalid) {
+          <div class="field-error">El nombre es obligatorio.</div>
+        }
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label for="r-host">IP / Host</label>
+          <input id="r-host" class="form-control mono" formControlName="host" placeholder="10.0.0.1" />
+          @if (routerForm.controls.host.touched && routerForm.controls.host.invalid) {
+            <div class="field-error">El host es obligatorio.</div>
+          }
+        </div>
+        <div class="form-group">
+          <label for="r-port">Puerto API</label>
+          <input id="r-port" class="form-control mono" type="number" min="1" formControlName="apiPort" />
+        </div>
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label for="r-user">Usuario API</label>
+          <input id="r-user" class="form-control" formControlName="apiUser" placeholder="api-user" />
+          @if (routerForm.controls.apiUser.touched && routerForm.controls.apiUser.invalid) {
+            <div class="field-error">El usuario es obligatorio.</div>
+          }
+        </div>
+        <div class="form-group">
+          <label for="r-pass">Contrasena</label>
+          <input
+            id="r-pass"
+            class="form-control"
+            type="password"
+            autocomplete="new-password"
+            formControlName="apiPassword"
+            placeholder="••••••"
+          />
+          @if (routerForm.controls.apiPassword.touched && routerForm.controls.apiPassword.invalid) {
+            <div class="field-error">La contrasena es obligatoria.</div>
+          }
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label for="r-model">Modelo</label>
+        <input id="r-model" class="form-control" formControlName="model" placeholder="CCR2004 / RB5009" />
+      </div>
+
+      <p class="hint">
+        Usa un usuario dedicado con permisos limitados a <b>queues</b>, <b>ppp secrets</b> y
+        <b>address-lists</b>. La contrasena se guarda cifrada y no vuelve a mostrarse.
+      </p>
+    </form>
+
+    <ng-container modalFooter>
+      <button type="button" class="btn btn-outline" (click)="closeModals()">Cancelar</button>
+      <button appRipple type="submit" form="router-form" class="btn btn-grad" [disabled]="saving()">
+        @if (saving()) {
+          <i class="fas fa-circle-notch" style="animation: spinSlow 1s linear infinite"></i>
+          Probando conexion…
+        } @else {
+          <i class="fas fa-plug"></i> Probar y vincular
+        }
+      </button>
+    </ng-container>
+  </app-modal>
+}
+
+@if (action()) {
+  <app-modal [title]="actionTitle()" (close)="closeModals()">
+    <form [formGroup]="actionForm" (ngSubmit)="runAction()" id="action-form">
+      <div class="form-group">
+        <label for="a-router">Router</label>
+        <select id="a-router" class="form-control" formControlName="routerId">
+          @for (router of routers.value(); track router.id) {
+            <option [value]="router.id">{{ router.name }} — {{ router.host }}</option>
+          }
+        </select>
+      </div>
+
+      @if (action() === 'queue') {
+        <div class="form-group">
+          <label for="a-queue">Identificador del queue</label>
+          <input
+            id="a-queue"
+            class="form-control mono"
+            formControlName="queueId"
+            placeholder="queue-cliente-1042"
+          />
+          @if (actionForm.controls.queueId.touched && actionForm.controls.queueId.invalid) {
+            <div class="field-error">Indica el queue: letras, numeros y . _ @ - sin espacios.</div>
+          }
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label for="a-down">Bajada (Kbps)</label>
+            <input id="a-down" class="form-control mono" type="number" min="1" formControlName="downloadKbps" />
+          </div>
+          <div class="form-group">
+            <label for="a-up">Subida (Kbps)</label>
+            <input id="a-up" class="form-control mono" type="number" min="1" formControlName="uploadKbps" />
+          </div>
+        </div>
+        <p class="hint">100000 Kbps = 100 Mbps.</p>
+      } @else {
+        <div class="form-group">
+          <label for="a-secret">PPPoE secret del cliente</label>
+          <input
+            id="a-secret"
+            class="form-control mono"
+            formControlName="secretId"
+            placeholder="cliente-1042"
+          />
+          @if (actionForm.controls.secretId.touched && actionForm.controls.secretId.invalid) {
+            <div class="field-error">Indica el secret: letras, numeros y . _ @ - sin espacios.</div>
+          }
+          <div class="hint">
+            Es el nombre del secret en <b>/ppp/secret</b> del router, no el documento del cliente.
+          </div>
+        </div>
+        @if (action() === 'cut') {
+          <div class="alert alert-warning">
+            <i class="fas fa-triangle-exclamation"></i>
+            <span>
+              El cliente perdera el servicio de inmediato. Confirma que la factura esta vencida
+              antes de ejecutar.
+            </span>
+          </div>
+        }
+      }
+    </form>
+
+    <ng-container modalFooter>
+      <button type="button" class="btn btn-outline" (click)="closeModals()">Cancelar</button>
+      <button
+        appRipple
+        type="submit"
+        form="action-form"
+        class="btn"
+        [class.btn-danger]="action() === 'cut'"
+        [class.btn-success]="action() === 'enable'"
+        [class.btn-accent]="action() === 'queue'"
+        [disabled]="saving()"
+      >
+        @if (saving()) {
+          <i class="fas fa-circle-notch" style="animation: spinSlow 1s linear infinite"></i>
+          Ejecutando…
+        } @else {
+          <i class="fas fa-bolt"></i> Ejecutar en el router
+        }
+      </button>
+    </ng-container>
+  </app-modal>
+}

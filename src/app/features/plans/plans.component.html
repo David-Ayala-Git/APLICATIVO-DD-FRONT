@@ -1,0 +1,136 @@
+<div class="page">
+  <app-page-head
+    title="Planes de servicio"
+    subtitle="Catalogo por tecnologia, con perfil de velocidad y precio mensual"
+  >
+    <button
+      appRipple
+      type="button"
+      class="btn btn-outline btn-sm"
+      [disabled]="plans.loading()"
+      (click)="plans.reload()"
+    >
+      <i class="fas fa-rotate"></i> Actualizar
+    </button>
+    <button appRipple type="button" class="btn btn-grad btn-sm" (click)="openCreate()">
+      <i class="fas fa-plus"></i> Nuevo plan
+    </button>
+  </app-page-head>
+
+  @if (plans.loading() || plans.error()) {
+    <div class="card">
+      <app-async-state
+        [loading]="plans.loading()"
+        [error]="plans.error()"
+        (retry)="plans.reload()"
+      />
+    </div>
+  } @else if (rows().length === 0) {
+    <div class="card">
+      <div class="empty">
+        <i class="fas fa-layer-group"></i>
+        <div class="empty-title">Catalogo vacio</div>
+        <p>Crea el primer plan para poder asignarlo a los clientes y facturarlo.</p>
+      </div>
+    </div>
+  } @else {
+    <div class="card" style="margin-bottom: 1rem">
+      <div class="card-body row-wrap" style="gap: 2rem">
+        <div>
+          <div class="stat-label">Planes en catalogo</div>
+          <div class="stat-value">{{ totals().plans }}</div>
+        </div>
+        <div>
+          <div class="stat-label">Clientes con plan</div>
+          <div class="stat-value">{{ totals().assigned }}</div>
+        </div>
+        <div>
+          <div class="stat-label">Facturacion recurrente teorica</div>
+          <div class="stat-value">{{ cop(totals().recurring) }}</div>
+          <div class="stat-change flat">Suma de precio x clientes asignados</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="mod-grid">
+      @for (row of rows(); track row.plan.id) {
+        <div class="card" [style.border-color]="row.clients > 0 ? '#c4b5fd' : null">
+          <div class="card-body">
+            <div class="row-wrap" style="margin-bottom: 0.6rem">
+              <span class="badge {{ row.label.badge }}">{{ row.label.text }}</span>
+              <span class="badge badge-info">Internet</span>
+            </div>
+            <h3 style="font-size: 1.05rem">{{ row.plan.name }}</h3>
+            <div class="stat-value" style="font-size: 1.6rem">
+              {{ cop(row.plan.price) }}
+              <span style="font-size: 0.8rem; color: var(--text-muted); font-weight: 500">/mes</span>
+            </div>
+            <div class="cell-sub">
+              {{ row.plan.downMbps }}&#8595; / {{ row.plan.upMbps }}&#8593; Mbps ·
+              {{ row.clients }} cliente(s)
+            </div>
+          </div>
+        </div>
+      }
+    </div>
+  }
+</div>
+
+@if (creating()) {
+  <app-modal title="Nuevo plan" (close)="close()">
+    <form [formGroup]="form" (ngSubmit)="save()" id="plan-form">
+      <div class="form-group">
+        <label for="p-name">Nombre comercial</label>
+        <input id="p-name" class="form-control" formControlName="name" placeholder="Fibra 500M" />
+        @if (form.controls.name.touched && form.controls.name.invalid) {
+          <div class="field-error">El nombre es obligatorio.</div>
+        }
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label for="p-down">Bajada (Mbps)</label>
+          <input id="p-down" class="form-control mono" type="number" min="1" formControlName="downMbps" />
+          @if (form.controls.downMbps.touched && form.controls.downMbps.invalid) {
+            <div class="field-error">Debe ser mayor que cero.</div>
+          }
+        </div>
+        <div class="form-group">
+          <label for="p-up">Subida (Mbps)</label>
+          <input id="p-up" class="form-control mono" type="number" min="1" formControlName="upMbps" />
+          @if (form.controls.upMbps.touched && form.controls.upMbps.invalid) {
+            <div class="field-error">Debe ser mayor que cero.</div>
+          }
+        </div>
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label for="p-price">Precio mensual (COP)</label>
+          <input id="p-price" class="form-control mono" type="number" min="1" formControlName="price" />
+          <div class="hint">Sin puntos ni simbolos: 79000.</div>
+        </div>
+        <div class="form-group">
+          <label for="p-tech">Tecnologia</label>
+          <select id="p-tech" class="form-control" formControlName="technology">
+            @for (tech of technologies; track tech.value) {
+              <option [value]="tech.value">{{ tech.text }}</option>
+            }
+          </select>
+        </div>
+      </div>
+    </form>
+
+    <ng-container modalFooter>
+      <button type="button" class="btn btn-outline" (click)="close()">Cancelar</button>
+      <button appRipple type="submit" form="plan-form" class="btn btn-grad" [disabled]="saving()">
+        @if (saving()) {
+          <i class="fas fa-circle-notch" style="animation: spinSlow 1s linear infinite"></i>
+          Guardando…
+        } @else {
+          <i class="fas fa-check"></i> Crear plan
+        }
+      </button>
+    </ng-container>
+  </app-modal>
+}

@@ -1,0 +1,283 @@
+<div class="page">
+  <app-page-head
+    title="Facturacion"
+    subtitle="Corrida mensual, facturacion electronica y estado de cartera"
+  >
+    <button
+      appRipple
+      type="button"
+      class="btn btn-outline btn-sm"
+      [disabled]="invoices.loading()"
+      (click)="invoices.reload()"
+    >
+      <i class="fas fa-rotate"></i> Actualizar
+    </button>
+    <button appRipple type="button" class="btn btn-accent btn-sm" (click)="confirmRun.set(true)">
+      <i class="fas fa-bolt"></i> Generar periodo
+    </button>
+    <button appRipple type="button" class="btn btn-grad btn-sm" (click)="openCreate()">
+      <i class="fas fa-plus"></i> Factura manual
+    </button>
+  </app-page-head>
+
+  <div class="stats-grid">
+    <app-stat-card
+      label="Facturas emitidas"
+      [value]="stats().total"
+      icon="fas fa-file-invoice"
+      tone="cyan"
+      [note]="stats().stamped + ' con CUFE DIAN'"
+    />
+    <app-stat-card
+      label="Pagadas"
+      [value]="stats().paid"
+      icon="fas fa-circle-check"
+      tone="green"
+      [note]="copCompact(stats().paidAmount)"
+      trend="up"
+    />
+    <app-stat-card
+      label="Pendientes"
+      [value]="stats().pending"
+      icon="fas fa-clock"
+      tone="orange"
+      [note]="copCompact(stats().pendingAmount)"
+    />
+    <app-stat-card
+      label="Vencidas"
+      [value]="stats().overdue"
+      icon="fas fa-triangle-exclamation"
+      tone="red"
+      [note]="copCompact(stats().overdueAmount) + ' en mora'"
+      trend="down"
+    />
+  </div>
+
+  <div class="card">
+    <div class="card-header">
+      <div class="topbar-search" style="width: 260px">
+        <i class="fas fa-search"></i>
+        <input
+          placeholder="Cliente, periodo o CUFE…"
+          [value]="search()"
+          (input)="search.set($any($event.target).value)"
+          aria-label="Buscar factura"
+        />
+      </div>
+
+      <div class="row-wrap">
+        <select
+          class="form-control"
+          style="width: auto; padding: 0.4rem 2.5rem 0.4rem 0.7rem; font-size: 0.8rem"
+          [value]="periodFilter()"
+          (change)="periodFilter.set($any($event.target).value)"
+          aria-label="Filtrar por periodo"
+        >
+          <option value="ALL">Todos los periodos</option>
+          @for (period of periods(); track period) {
+            <option [value]="period">{{ periodLabel(period) }}</option>
+          }
+        </select>
+
+        @for (opt of statusOptions; track opt.value) {
+          <button
+            type="button"
+            class="badge"
+            [class.badge-violet]="statusFilter() === opt.value"
+            [class.badge-gray]="statusFilter() !== opt.value"
+            style="cursor: pointer; border: none; font-family: inherit"
+            (click)="statusFilter.set(opt.value)"
+          >
+            {{ opt.text }}
+          </button>
+        }
+      </div>
+    </div>
+
+    <app-async-state
+      [loading]="invoices.loading()"
+      [error]="invoices.error()"
+      [empty]="filtered().length === 0"
+      emptyIcon="fas fa-file-invoice-dollar"
+      emptyTitle="Sin facturas que coincidan"
+      emptyText="Genera el periodo o crea una factura manual."
+      (retry)="invoices.reload()"
+    />
+
+    @if (!invoices.loading() && !invoices.error() && filtered().length > 0) {
+      <div class="table-wrap">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Cliente</th>
+              <th>Periodo</th>
+              <th>Emision</th>
+              <th>Vence</th>
+              <th>Valor</th>
+              <th>DIAN</th>
+              <th>Estado</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (invoice of filtered(); track invoice.id) {
+              <tr>
+                <td class="cell-main">{{ clientName(invoice.clientId) }}</td>
+                <td class="cell-mono">{{ invoice.period }}</td>
+                <td class="cell-sub">{{ invoice.issuedAt | date: 'dd/MM/yyyy' }}</td>
+                <td class="cell-sub">{{ invoice.dueDate | date: 'dd/MM/yyyy' }}</td>
+                <td style="font-weight: 700">{{ cop(invoice.amount) }}</td>
+                <td>
+                  @switch (invoice.einvoiceStatus) {
+                    @case ('ISSUED') {
+                      <span class="badge badge-success" [title]="invoice.cufe ?? ''">
+                        <i class="fas fa-circle"></i> Aceptada
+                      </span>
+                    }
+                    @case ('REJECTED') {
+                      <span class="badge badge-danger" [title]="invoice.einvoiceError ?? ''">
+                        <i class="fas fa-circle"></i> Rechazada
+                      </span>
+                    }
+                    @default {
+                      <span class="badge badge-gray" title="Aun no hay proveedor de facturacion electronica DIAN configurado">
+                        <i class="fas fa-circle"></i> Sin emitir
+                      </span>
+                    }
+                  }
+                </td>
+                <td><span class="badge {{ statusLabel(invoice.status).badge }}">{{ statusLabel(invoice.status).text }}</span></td>
+                <td class="actions">
+                  @if (invoice.pdfUrl) {
+                    <a
+                      class="btn btn-ghost btn-icon"
+                      [href]="invoice.pdfUrl"
+                      target="_blank"
+                      rel="noopener"
+                      title="Descargar PDF"
+                    >
+                      <i class="fas fa-file-pdf"></i>
+                    </a>
+                  }
+                  @if (invoice.xmlUrl) {
+                    <a
+                      class="btn btn-ghost btn-icon"
+                      [href]="invoice.xmlUrl"
+                      target="_blank"
+                      rel="noopener"
+                      title="Descargar XML"
+                    >
+                      <i class="fas fa-file-code"></i>
+                    </a>
+                  }
+                </td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+    }
+  </div>
+</div>
+
+@if (confirmRun()) {
+  <app-modal title="Generar facturacion del periodo" (close)="closeModals()">
+    <div class="alert alert-info">
+      <i class="fas fa-circle-info"></i>
+      <span>
+        El microservicio recorre los clientes activos del proveedor y emite la factura del periodo
+        <b>{{ currentPeriodValue }}</b> a quien le falte. Los clientes que ya tienen factura se
+        omiten, asi que puedes ejecutarlo mas de una vez sin duplicar.
+      </span>
+    </div>
+    <p class="hint">
+      Si usas facturacion electronica, el timbrado ante la DIAN ocurre despues de la emision.
+    </p>
+
+    <ng-container modalFooter>
+      <button type="button" class="btn btn-outline" (click)="closeModals()">Cancelar</button>
+      <button appRipple type="button" class="btn btn-accent" [disabled]="running()" (click)="runBilling()">
+        @if (running()) {
+          <i class="fas fa-circle-notch" style="animation: spinSlow 1s linear infinite"></i>
+          Procesando…
+        } @else {
+          <i class="fas fa-bolt"></i> Ejecutar corrida
+        }
+      </button>
+    </ng-container>
+  </app-modal>
+}
+
+@if (creating()) {
+  <app-modal title="Factura manual" (close)="closeModals()">
+    <form [formGroup]="form" (ngSubmit)="save()" id="invoice-form">
+      <div class="form-group">
+        <label for="i-client">Cliente</label>
+        <select id="i-client" class="form-control" formControlName="clientId">
+          @for (client of clients.value(); track client.id) {
+            <option [value]="client.id">{{ client.fullName }} — {{ client.document }}</option>
+          }
+        </select>
+        @if (clients.value().length === 0) {
+          <div class="field-error">No hay clientes cargados. Crealos primero en CRM.</div>
+        }
+      </div>
+
+      <div class="form-group">
+        <label for="i-plan">Plan facturado</label>
+        <select
+          id="i-plan"
+          class="form-control"
+          formControlName="planId"
+          (change)="onPlanChange($any($event.target).value)"
+        >
+          <option value="">Sin plan (cargo suelto)</option>
+          @for (plan of plans.value(); track plan.id) {
+            <option [value]="plan.id">{{ plan.name }} — {{ cop(plan.price) }}</option>
+          }
+        </select>
+        <div class="hint">Al elegir un plan se precarga su precio.</div>
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label for="i-period">Periodo</label>
+          <input id="i-period" class="form-control mono" formControlName="period" placeholder="2026-10" />
+          @if (form.controls.period.touched && form.controls.period.invalid) {
+            <div class="field-error">Formato AAAA-MM.</div>
+          }
+        </div>
+        <div class="form-group">
+          <label for="i-amount">Valor (COP)</label>
+          <input id="i-amount" class="form-control mono" type="number" min="1" formControlName="amount" />
+          @if (form.controls.amount.touched && form.controls.amount.invalid) {
+            <div class="field-error">El valor debe ser mayor que cero.</div>
+          }
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label for="i-due">Fecha de vencimiento</label>
+        <input id="i-due" class="form-control" type="date" formControlName="dueDate" />
+      </div>
+    </form>
+
+    <ng-container modalFooter>
+      <button type="button" class="btn btn-outline" (click)="closeModals()">Cancelar</button>
+      <button
+        appRipple
+        type="submit"
+        form="invoice-form"
+        class="btn btn-grad"
+        [disabled]="saving() || clients.value().length === 0"
+      >
+        @if (saving()) {
+          <i class="fas fa-circle-notch" style="animation: spinSlow 1s linear infinite"></i>
+          Emitiendo…
+        } @else {
+          <i class="fas fa-check"></i> Emitir factura
+        }
+      </button>
+    </ng-container>
+  </app-modal>
+}

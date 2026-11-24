@@ -1,0 +1,9 @@
+/* Hoja global de la consola D&D Conexiones.
+   El orden importa: tokens -> base -> piezas reutilizables -> pantallas. */
+@use 'styles/tokens';
+@use 'styles/base';
+@use 'styles/forms';
+@use 'styles/components';
+@use 'styles/shell';
+@use 'styles/auth';
+@use 'styles/whatsapp';

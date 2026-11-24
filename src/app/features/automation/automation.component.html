@@ -1,0 +1,100 @@
+<div class="page">
+  <app-page-head
+    title="Automatizacion con n8n"
+    subtitle="Flujos que conectan facturacion, red, WhatsApp e IA sin escribir codigo"
+  >
+    <a
+      appRipple
+      class="btn btn-grad btn-sm"
+      [href]="n8nUrl"
+      target="_blank"
+      rel="noopener"
+    >
+      <i class="fas fa-diagram-project"></i> Abrir consola de n8n
+    </a>
+  </app-page-head>
+
+  <div class="alert alert-info" style="margin-bottom: 1rem">
+    <i class="fas fa-circle-info"></i>
+    <span>
+      n8n corre como un servicio aparte del ecosistema y guarda sus propios flujos, por eso esta
+      pantalla no lista ejecuciones: las ves en su consola. Aqui tienes las recetas listas para
+      armar, con los endpoints exactos del gateway que debe llamar cada paso. Autentica los nodos
+      HTTP con un JWT de un usuario de servicio, igual que haria cualquier cliente de la API.
+    </span>
+  </div>
+
+  @for (recipe of recipes; track recipe.title) {
+    <div class="card" style="margin-bottom: 1rem">
+      <div class="card-header">
+        <div class="row">
+          <div class="dot-ico" style="background: var(--purple-light); color: #7c3aed">
+            <i class="{{ recipe.icon }}"></i>
+          </div>
+          <div>
+            <h3>{{ recipe.title }}</h3>
+            <div class="sub">
+              {{ recipe.steps.length }} pasos
+              @if (recipe.file) {
+                · <span class="mono">infra/n8n/workflows/{{ recipe.file }}</span>
+              }
+            </div>
+          </div>
+        </div>
+        @if (recipe.file) {
+          <span class="badge badge-success">Flujo incluido</span>
+        } @else {
+          <span class="badge badge-gray">Idea</span>
+        }
+      </div>
+      <div class="card-body">
+        <p class="text-secondary" style="font-size: 0.85rem; margin-bottom: 1rem">
+          {{ recipe.description }}
+        </p>
+
+        <div class="flow">
+          @for (step of recipe.steps; track step.title; let last = $last) {
+            <div class="flow-node">
+              <div class="ni stat-icon {{ step.tone }}" style="width: 38px; height: 38px">
+                <i class="{{ step.icon }}"></i>
+              </div>
+              <div class="nt mono" style="font-size: 0.72rem">{{ step.title }}</div>
+              <div class="ns">{{ step.detail }}</div>
+            </div>
+            @if (!last) {
+              <div class="flow-arrow"><i class="fas fa-arrow-right"></i></div>
+            }
+          }
+        </div>
+      </div>
+    </div>
+  }
+
+  <div class="card">
+    <div class="card-header"><h3>Como conectar n8n al gateway</h3></div>
+    <div class="card-body">
+      <div class="kv">
+        <span>URL base de la API</span>
+        <b class="mono">http://api-gateway:8080</b>
+      </div>
+      <div class="kv">
+        <span>Autenticacion</span>
+        <b class="mono">Authorization: Bearer &lt;jwt&gt;</b>
+      </div>
+      <div class="kv">
+        <span>Obtener el token</span>
+        <b class="mono">POST /api/auth/login</b>
+      </div>
+      <div class="kv">
+        <span>Tenant</span>
+        <b>Lo fija el gateway desde el token; no lo mandes a mano</b>
+      </div>
+      <p class="hint" style="margin-top: 0.9rem">
+        Dentro de la red de Docker usa el nombre del servicio
+        (<span class="mono">api-gateway</span>); desde tu maquina,
+        <span class="mono">http://localhost:8080</span>. Crea un usuario dedicado para los flujos
+        para poder auditar sus acciones por separado.
+      </p>
+    </div>
+  </div>
+</div>

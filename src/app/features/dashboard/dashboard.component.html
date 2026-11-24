@@ -1,0 +1,255 @@
+<div class="page">
+  <div class="page-head">
+    <div>
+      <h2>Dashboard gerencial</h2>
+      <p>
+        Datos en vivo de CRM, facturacion, red y soporte
+        @if (report.value()) {
+          · reporte ejecutivo generado el
+          {{ report.value()!.generatedAt | date: 'dd/MM/yyyy HH:mm' }}
+        }
+      </p>
+    </div>
+    <div class="head-actions">
+      <button
+        appRipple
+        type="button"
+        class="btn btn-outline btn-sm"
+        [disabled]="loading()"
+        (click)="reloadAll()"
+      >
+        <i class="fas fa-rotate"></i> Actualizar
+      </button>
+      <a appRipple class="btn btn-grad btn-sm" [routerLink]="['/app/reports']">
+        <i class="fas fa-chart-line"></i> Ver reportes
+      </a>
+    </div>
+  </div>
+
+  <div class="stats-grid">
+    <app-stat-card
+      label="Clientes totales"
+      [value]="clientStats().total"
+      icon="fas fa-users"
+      tone="violet"
+      [note]="clientStats().suspended + ' suspendidos'"
+      trend="flat"
+    />
+    <app-stat-card
+      label="Clientes activos"
+      [value]="clientStats().active"
+      icon="fas fa-signal"
+      tone="green"
+      [note]="percent(clientStats().activeShare, 1) + ' de la base'"
+      trend="up"
+    />
+    <app-stat-card
+      label="Recaudo del mes"
+      [value]="copCompact(monthRevenue())"
+      icon="fas fa-dollar-sign"
+      tone="cyan"
+      [note]="'Facturas pagadas del periodo'"
+      trend="flat"
+    />
+    <app-stat-card
+      label="Facturas vencidas"
+      [value]="overdue().count"
+      icon="fas fa-triangle-exclamation"
+      tone="red"
+      [note]="cop(overdue().amount) + ' en cartera'"
+      trend="down"
+    />
+  </div>
+
+  <div class="grid-2-1">
+    <div class="card">
+      <div class="card-header">
+        <div>
+          <h3>Recaudo por periodo</h3>
+          <div class="sub">Facturas en estado PAGADA, ultimos 12 meses</div>
+        </div>
+        @if (invoices.error()) {
+          <span class="badge badge-warning"><i class="fas fa-circle"></i> Sin datos de facturacion</span>
+        } @else {
+          <span class="badge badge-success"><i class="fas fa-circle"></i> En vivo</span>
+        }
+      </div>
+      <div class="card-body">
+        @if (invoices.loading()) {
+          <div class="loading-row"><i class="fas fa-circle-notch"></i> Cargando facturas…</div>
+        } @else if (!hasRevenueData()) {
+          <div class="empty">
+            <i class="fas fa-file-invoice-dollar"></i>
+            <div class="empty-title">Todavia no hay recaudo registrado</div>
+            <p>Genera la facturacion del mes y registra los pagos para ver la serie.</p>
+          </div>
+        } @else {
+          <app-bar-chart [data]="revenueBars()" />
+        }
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header"><h3>Salud de la red</h3></div>
+      <div class="card-body">
+        <div class="kv">
+          <span>ONUs en linea</span>
+          <b [style.color]="onuHealthPct() >= 95 ? 'var(--success)' : 'var(--warning)'">
+            {{ networkStats().onusOnline }} / {{ networkStats().onusTotal }}
+          </b>
+        </div>
+        <div class="kv">
+          <span>Routers MikroTik</span>
+          <b>{{ networkStats().routersOnline }} / {{ networkStats().routersTotal }} en linea</b>
+        </div>
+        <div class="kv">
+          <span>OLTs · puertos PON</span>
+          <b>{{ networkStats().olts }} · {{ networkStats().ponPorts }}</b>
+        </div>
+        <div class="kv">
+          <span>Senal perdida (LOS)</span>
+          <b [style.color]="networkStats().onusLos > 0 ? 'var(--danger)' : 'var(--text-primary)'">
+            {{ networkStats().onusLos }}
+          </b>
+        </div>
+        <div class="kv">
+          <span>ONUs sin autorizar</span>
+          <b>{{ networkStats().onusPending }}</b>
+        </div>
+
+        <div style="margin-top: 0.9rem">
+          <div class="progress-label">
+            <span class="text-secondary">Disponibilidad de ONUs</span>
+            <b>{{ onuHealthPct() }}%</b>
+          </div>
+          <div class="progress"><span [style.width.%]="onuHealthPct()"></span></div>
+        </div>
+
+        <a
+          class="btn btn-outline btn-sm"
+          style="margin-top: 1rem"
+          [routerLink]="['/app/gpon']"
+        >
+          <i class="fas fa-satellite-dish"></i> Ir a GPON
+        </a>
+      </div>
+    </div>
+  </div>
+
+  <div class="grid-2" style="margin-top: 1rem">
+    <div class="card">
+      <div class="card-header">
+        <h3>Distribucion por plan</h3>
+        <a class="badge badge-violet" [routerLink]="['/app/plans']" style="text-decoration: none">
+          Ver catalogo
+        </a>
+      </div>
+      <div class="card-body">
+        @if (planDistribution().length === 0) {
+          <div class="empty">
+            <i class="fas fa-layer-group"></i>
+            <div class="empty-title">Sin planes en el catalogo</div>
+            <p>Crea los planes para poder asignarlos a los clientes.</p>
+          </div>
+        } @else {
+          @for (row of planDistribution(); track row.plan.id) {
+            <div class="kv">
+              <span>
+                <span class="badge {{ row.badge }}">{{ row.plan.name }}</span>
+                <span class="cell-sub" style="margin-left: 0.5rem">
+                  {{ row.plan.downMbps }}/{{ row.plan.upMbps }} Mbps · {{ cop(row.plan.price) }}
+                </span>
+              </span>
+              <b>{{ row.count }} clientes</b>
+            </div>
+          }
+          @if (unassignedClients() > 0) {
+            <div class="kv">
+              <span><span class="badge badge-gray">Sin plan asignado</span></span>
+              <b>{{ unassignedClients() }} clientes</b>
+            </div>
+          }
+        }
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <h3>Tickets abiertos</h3>
+        @if (urgentCount() > 0) {
+          <span class="badge badge-danger">{{ urgentCount() }} urgentes</span>
+        } @else {
+          <span class="badge badge-success">Sin urgencias</span>
+        }
+      </div>
+      @if (openTickets().length === 0) {
+        <div class="empty">
+          <i class="fas fa-circle-check"></i>
+          <div class="empty-title">Nada pendiente en la mesa de ayuda</div>
+          <p>Todos los tickets estan resueltos o cerrados.</p>
+        </div>
+      } @else {
+        <div class="table-wrap">
+          <table class="data-table">
+            <tbody>
+              @for (ticket of openTickets(); track ticket.id) {
+                <tr>
+                  <td>
+                    <div class="cell-main">{{ ticket.reason }}</div>
+                    <div class="cell-sub">{{ clientName(ticket.clientId) }}</div>
+                  </td>
+                  <td><app-status-badge [label]="ticketStatusLabel(ticket.status)" /></td>
+                  <td><app-status-badge [label]="priorityLabel(ticket.priority)" /></td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+        <div class="card-body" style="border-top: 1px solid var(--border)">
+          <a class="btn btn-outline btn-sm" [routerLink]="['/app/tickets']">
+            <i class="fas fa-headset"></i> Abrir mesa de ayuda
+          </a>
+        </div>
+      }
+    </div>
+  </div>
+
+  @if (report.value()) {
+    <div class="card" style="margin-top: 1rem">
+      <div class="card-header">
+        <div>
+          <h3>Indicadores del reporte ejecutivo</h3>
+          <div class="sub">Calculados por dd_ms_reports para el periodo {{ report.value()!.period }}</div>
+        </div>
+      </div>
+      <div class="card-body">
+        <div class="stats-grid" style="margin-bottom: 0">
+          <app-stat-card
+            label="MRR"
+            [value]="copCompact(report.value()!.mrr)"
+            icon="fas fa-dollar-sign"
+            tone="cyan"
+          />
+          <app-stat-card
+            label="ARPU"
+            [value]="cop(report.value()!.arpu)"
+            icon="fas fa-coins"
+            tone="violet"
+          />
+          <app-stat-card
+            label="Churn"
+            [value]="percent(report.value()!.churnRate)"
+            icon="fas fa-user-minus"
+            tone="red"
+          />
+          <app-stat-card
+            label="Clientes activos"
+            [value]="report.value()!.activeClients"
+            icon="fas fa-user-check"
+            tone="green"
+          />
+        </div>
+      </div>
+    </div>
+  }
+</div>

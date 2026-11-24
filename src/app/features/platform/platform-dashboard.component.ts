@@ -1,0 +1,153 @@
+import { Component, computed, inject } from '@angular/core';
+import { RouterLink } from '@angular/router';
+
+import { AuthApi } from '../../core/api';
+import { Tenant, UserSummary } from '../../core/models';
+import { collection } from '../../core/state/collection';
+import { AsyncStateComponent } from '../../shared/components/async-state.component';
+import { StatCardComponent } from '../../shared/components/stat-card.component';
+import { StatusBadgeComponent } from '../../shared/components/status-badge.component';
+import { RippleDirective } from '../../shared/directives/ripple.directive';
+import { tenantPlanLabel, tenantStatusLabel } from '../../shared/labels';
+
+/**
+ * Inicio del SUPER_ADMIN. No tiene tenant, asi que el dashboard gerencial (que
+ * lee clientes, facturas y red de UN proveedor) le responderia 403 en todo:
+ * aqui ve la plataforma - proveedores, sus usuarios y que modulos tiene cada uno.
+ */
+@Component({
+  selector: 'app-platform-dashboard',
+  imports: [RouterLink, AsyncStateComponent, StatCardComponent, StatusBadgeComponent, RippleDirective],
+  template: `
+    <div class="page">
+      <div class="page-head">
+        <div>
+          <h2>Consola de plataforma</h2>
+          <p>Proveedores, usuarios y modulos de toda la instalacion</p>
+        </div>
+        <div class="head-actions">
+          <button appRipple type="button" class="btn btn-outline btn-sm" (click)="reload()">
+            <i class="fas fa-rotate"></i> Actualizar
+          </button>
+          <a appRipple class="btn btn-grad btn-sm" [routerLink]="['/app/settings']">
+            <i class="fas fa-building"></i> Registrar ISP
+          </a>
+        </div>
+      </div>
+
+      <div class="stats-grid">
+        <app-stat-card
+          label="Proveedores"
+          [value]="tenants.value().length"
+          icon="fas fa-building"
+          tone="violet"
+          [note]="activeTenants() + ' activos'"
+        />
+        <app-stat-card
+          label="Usuarios de ISP"
+          [value]="ispUsers()"
+          icon="fas fa-users"
+          tone="cyan"
+          note="Con acceso a la consola de su proveedor"
+        />
+        <app-stat-card
+          label="Super Admins"
+          [value]="superAdmins()"
+          icon="fas fa-user-shield"
+          tone="green"
+          note="Administran la plataforma"
+        />
+      </div>
+
+      <div class="card" style="margin-top: 1rem">
+        <div class="card-header">
+          <div>
+            <h3>Proveedores y modulos</h3>
+            <div class="sub">Activa o desactiva modulos desde Modulos, eligiendo el proveedor</div>
+          </div>
+          <a class="btn btn-outline btn-sm" [routerLink]="['/app/modules']">
+            <i class="fas fa-cubes"></i> Modulos
+          </a>
+        </div>
+
+        <app-async-state
+          [loading]="tenants.loading()"
+          [error]="tenants.error()"
+          [empty]="tenants.value().length === 0"
+          emptyIcon="fas fa-building"
+          emptyTitle="Sin proveedores"
+          emptyText="Registra el primer ISP en Configuracion."
+          (retry)="tenants.reload()"
+        />
+
+        @if (tenants.value().length > 0) {
+          <div class="table-wrap">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Proveedor</th>
+                  <th>Plan</th>
+                  <th>Estado</th>
+                  <th>Usuarios</th>
+                  <th>Modulos activos</th>
+                </tr>
+              </thead>
+              <tbody>
+                @for (row of tenants.value(); track row.id) {
+                  <tr>
+                    <td>
+                      <div class="cell-main">{{ row.name }}</div>
+                      <div class="cell-sub mono">{{ row.slug }}</div>
+                    </td>
+                    <td><app-status-badge [label]="planLabel(row.plan)" /></td>
+                    <td><app-status-badge [label]="statusLabel(row.status)" /></td>
+                    <td>{{ usersOf(row) }}</td>
+                    <td>
+                      <div class="row-wrap">
+                        @for (key of enabledModules(row); track key) {
+                          <span class="badge badge-gray mono" style="font-size: 0.62rem">{{ key }}</span>
+                        } @empty {
+                          <span class="cell-sub">Ninguno</span>
+                        }
+                      </div>
+                    </td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          </div>
+        }
+      </div>
+    </div>
+  `,
+})
+export class PlatformDashboardComponent {
+  private readonly api = inject(AuthApi);
+
+  protected readonly tenants = collection(() => this.api.tenants(), [] as Tenant[]);
+  protected readonly users = collection(() => this.api.users(), [] as UserSummary[]);
+
+  protected readonly activeTenants = computed(
+    () => this.tenants.value().filter((t) => t.status === 'ACTIVE').length,
+  );
+  protected readonly ispUsers = computed(() => this.users.value().filter((u) => u.tenantId).length);
+  protected readonly superAdmins = computed(
+    () => this.users.value().filter((u) => u.role === 'SUPER_ADMIN').length,
+  );
+
+  protected usersOf(tenant: Tenant): number {
+    return this.users.value().filter((u) => u.tenantId === tenant.id).length;
+  }
+
+  protected enabledModules(tenant: Tenant): string[] {
+    return tenant.modules.filter((m) => m.enabled).map((m) => m.moduleKey).sort();
+  }
+
+  protected reload(): void {
+    this.tenants.reload();
+    this.users.reload();
+  }
+
+  protected readonly planLabel = tenantPlanLabel;
+  protected readonly statusLabel = tenantStatusLabel;
+}

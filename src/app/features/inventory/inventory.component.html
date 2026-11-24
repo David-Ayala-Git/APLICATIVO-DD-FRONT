@@ -1,0 +1,221 @@
+<div class="page">
+  <app-page-head
+    title="Inventario"
+    subtitle="Equipos con numero de serie, estado de bodega y asignacion a cliente"
+  >
+    <button
+      appRipple
+      type="button"
+      class="btn btn-outline btn-sm"
+      [disabled]="equipment.loading()"
+      (click)="equipment.reload()"
+    >
+      <i class="fas fa-rotate"></i> Actualizar
+    </button>
+    <button appRipple type="button" class="btn btn-grad btn-sm" (click)="openCreate()">
+      <i class="fas fa-plus"></i> Ingresar equipo
+    </button>
+  </app-page-head>
+
+  <div class="stats-grid">
+    <app-stat-card
+      label="Equipos registrados"
+      [value]="stats().total"
+      icon="fas fa-boxes-stacked"
+      tone="violet"
+    />
+    <app-stat-card
+      label="Disponibles en bodega"
+      [value]="stats().inStock"
+      icon="fas fa-warehouse"
+      tone="green"
+    />
+    <app-stat-card
+      label="Asignados a clientes"
+      [value]="stats().assigned"
+      icon="fas fa-truck"
+      tone="cyan"
+    />
+    <app-stat-card
+      label="Averiados"
+      [value]="stats().faulty"
+      icon="fas fa-triangle-exclamation"
+      tone="orange"
+    />
+  </div>
+
+  @if (byType().length > 0) {
+    <div class="card" style="margin-bottom: 1rem">
+      <div class="card-header">
+        <h3>Existencias por tipo</h3>
+        <span class="sub">Disponible / total registrado</span>
+      </div>
+      <div class="card-body">
+        @for (row of byType(); track row.value) {
+          <div class="kv">
+            <span><span class="badge {{ row.label.badge }}">{{ row.label.text }}</span></span>
+            <b
+              [style.color]="row.inStock === 0 ? 'var(--danger)' : null"
+            >{{ row.inStock }} / {{ row.total }}</b>
+          </div>
+        }
+      </div>
+    </div>
+  }
+
+  <div class="card">
+    <div class="card-header">
+      <h3>Detalle del inventario</h3>
+      <div class="topbar-search" style="width: 280px">
+        <i class="fas fa-search"></i>
+        <input
+          placeholder="Serial, marca, modelo o cliente…"
+          [value]="search()"
+          (input)="search.set($any($event.target).value)"
+          aria-label="Buscar equipo"
+        />
+      </div>
+    </div>
+
+    <app-async-state
+      [loading]="equipment.loading()"
+      [error]="equipment.error()"
+      [empty]="filtered().length === 0"
+      emptyIcon="fas fa-boxes-stacked"
+      emptyTitle="Bodega vacia"
+      emptyText="Ingresa el primer equipo con su numero de serie."
+      (retry)="equipment.reload()"
+    />
+
+    @if (!equipment.loading() && !equipment.error() && filtered().length > 0) {
+      <div class="table-wrap">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Equipo</th>
+              <th>Tipo</th>
+              <th>Serial</th>
+              <th>Estado</th>
+              <th>Asignado a</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (item of filtered(); track item.id) {
+              <tr>
+                <td>
+                  <div class="cell-main">{{ item.brand || 'Sin marca' }} {{ item.model }}</div>
+                  <div class="cell-sub">Ingresado {{ item.createdAt | date: 'dd/MM/yyyy' }}</div>
+                </td>
+                <td><span class="badge {{ typeLabel(item.type).badge }}">{{ typeLabel(item.type).text }}</span></td>
+                <td class="cell-mono">{{ item.serialNumber }}</td>
+                <td><span class="badge {{ statusLabel(item.status).badge }}">{{ statusLabel(item.status).text }}</span></td>
+                <td>{{ clientName(item.assignedClientId) || '—' }}</td>
+                <td class="actions">
+                  @if (item.status === 'IN_STOCK') {
+                    <button type="button" class="btn btn-outline btn-sm" (click)="openAssign(item)">
+                      <i class="fas fa-user-plus"></i> Asignar
+                    </button>
+                  }
+                </td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+    }
+  </div>
+</div>
+
+@if (creating()) {
+  <app-modal title="Ingresar equipo a bodega" (close)="closeModals()">
+    <form [formGroup]="form" (ngSubmit)="save()" id="equipment-form">
+      <div class="form-row">
+        <div class="form-group">
+          <label for="e-type">Tipo</label>
+          <select id="e-type" class="form-control" formControlName="type">
+            @for (type of types; track type.value) {
+              <option [value]="type.value">{{ type.text }}</option>
+            }
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="e-serial">Numero de serie</label>
+          <input id="e-serial" class="form-control mono" formControlName="serialNumber" placeholder="HWTC-A1B2C3" />
+          @if (form.controls.serialNumber.touched && form.controls.serialNumber.invalid) {
+            <div class="field-error">El serial es obligatorio.</div>
+          }
+        </div>
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label for="e-brand">Marca</label>
+          <input id="e-brand" class="form-control" formControlName="brand" placeholder="Huawei" />
+        </div>
+        <div class="form-group">
+          <label for="e-model">Modelo</label>
+          <input id="e-model" class="form-control" formControlName="model" placeholder="EG8145V5" />
+        </div>
+      </div>
+
+      <p class="hint">El equipo entra como disponible en bodega hasta que se asigne a un cliente.</p>
+    </form>
+
+    <ng-container modalFooter>
+      <button type="button" class="btn btn-outline" (click)="closeModals()">Cancelar</button>
+      <button appRipple type="submit" form="equipment-form" class="btn btn-grad" [disabled]="saving()">
+        @if (saving()) {
+          <i class="fas fa-circle-notch" style="animation: spinSlow 1s linear infinite"></i>
+          Guardando…
+        } @else {
+          <i class="fas fa-check"></i> Guardar equipo
+        }
+      </button>
+    </ng-container>
+  </app-modal>
+}
+
+@if (assigning()) {
+  <app-modal title="Asignar equipo a cliente" (close)="closeModals()">
+    <form [formGroup]="assignForm" (ngSubmit)="assign()" id="assign-form">
+      <div class="form-group">
+        <label>Equipo</label>
+        <input
+          class="form-control mono"
+          [value]="assigning()!.serialNumber + ' · ' + (assigning()!.model || assigning()!.type)"
+          disabled
+        />
+      </div>
+      <div class="form-group">
+        <label for="e-client">Cliente</label>
+        <select id="e-client" class="form-control" formControlName="clientId">
+          @for (client of clients.value(); track client.id) {
+            <option [value]="client.id">{{ client.fullName }} — {{ client.document }}</option>
+          }
+        </select>
+        @if (clients.value().length === 0) {
+          <div class="field-error">No hay clientes cargados. Crealos primero en CRM.</div>
+        }
+      </div>
+    </form>
+
+    <ng-container modalFooter>
+      <button type="button" class="btn btn-outline" (click)="closeModals()">Cancelar</button>
+      <button
+        appRipple
+        type="submit"
+        form="assign-form"
+        class="btn btn-accent"
+        [disabled]="saving() || clients.value().length === 0"
+      >
+        @if (saving()) {
+          <i class="fas fa-circle-notch" style="animation: spinSlow 1s linear infinite"></i>
+          Asignando…
+        } @else {
+          <i class="fas fa-check"></i> Asignar
+        }
+      </button>
+    </ng-container>
+  </app-modal>
+}

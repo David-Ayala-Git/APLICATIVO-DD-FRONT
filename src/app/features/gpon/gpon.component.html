@@ -1,0 +1,266 @@
+<div class="page">
+  <app-page-head
+    title="Gestion GPON · OLT / ONU"
+    subtitle="Aprovisionamiento de ONUs, potencias opticas y estado de puertos PON"
+  >
+    <button
+      appRipple
+      type="button"
+      class="btn btn-outline btn-sm"
+      [class.btn-accent]="onlyPending()"
+      (click)="onlyPending.set(!onlyPending())"
+    >
+      <i class="fas fa-magnifying-glass"></i>
+      ONUs sin autorizar ({{ stats().pending }})
+    </button>
+    <button appRipple type="button" class="btn btn-grad btn-sm" (click)="openRegister()">
+      <i class="fas fa-plus"></i> Registrar ONU
+    </button>
+  </app-page-head>
+
+  <div class="stats-grid">
+    <app-stat-card
+      label="OLTs"
+      [value]="stats().olts"
+      icon="fas fa-satellite-dish"
+      tone="violet"
+      [note]="stats().ponPorts + ' puertos PON en uso'"
+    />
+    <app-stat-card
+      label="ONUs en linea"
+      [value]="stats().online"
+      icon="fas fa-wifi"
+      tone="green"
+      [note]="onlinePct() + '% de ' + stats().total"
+      trend="up"
+    />
+    <app-stat-card
+      label="Senal perdida (LOS)"
+      [value]="stats().los"
+      icon="fas fa-bolt"
+      tone="red"
+      [note]="stats().lowSignal + ' bajo -27 dBm'"
+      trend="down"
+    />
+    <app-stat-card
+      label="Sin autorizar"
+      [value]="stats().pending"
+      icon="fas fa-hourglass-half"
+      tone="orange"
+      note="Detectadas en la OLT"
+    />
+  </div>
+
+  <div class="card">
+    <div class="card-header">
+      <h3>ONUs registradas</h3>
+      <div class="topbar-search" style="width: 280px">
+        <i class="fas fa-search"></i>
+        <input
+          placeholder="Serial, cliente, OLT o puerto PON…"
+          [value]="search()"
+          (input)="search.set($any($event.target).value)"
+          aria-label="Buscar ONU"
+        />
+      </div>
+    </div>
+
+    <app-async-state
+      [loading]="onus.loading()"
+      [error]="onus.error()"
+      [empty]="filtered().length === 0"
+      emptyIcon="fas fa-satellite-dish"
+      emptyTitle="Sin ONUs que coincidan"
+      emptyText="Registra la primera ONU o quita los filtros activos."
+      (retry)="onus.reload()"
+    />
+
+    @if (!onus.loading() && !onus.error() && filtered().length > 0) {
+      <div class="table-wrap">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>ONU / Serial</th>
+              <th>Cliente</th>
+              <th>OLT · Puerto</th>
+              <th>Rx Power</th>
+              <th>Estado</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (onu of filtered(); track onu.id) {
+              <tr>
+                <td class="cell-mono">
+                  <div class="cell-main">{{ onu.serial }}</div>
+                  <div class="cell-sub">{{ vendorLabel(onu.vendor).text }}</div>
+                </td>
+                <td>{{ clientName(onu.clientId) }}</td>
+                <td class="cell-mono">{{ onu.oltName }} · {{ onu.ponPort }}</td>
+                <td><span class="badge {{ rxLabel(onu.rxPower).badge }}">{{ rxLabel(onu.rxPower).text }}</span></td>
+                <td><app-status-badge [label]="statusLabel(onu.status)" /></td>
+                <td class="actions">
+                  @if (onu.status === 'UNAUTHORIZED') {
+                    <button
+                      type="button"
+                      class="btn btn-accent btn-sm"
+                      (click)="openAuthorize(onu)"
+                    >
+                      Autorizar
+                    </button>
+                  } @else {
+                    <button
+                      type="button"
+                      class="btn btn-ghost btn-icon"
+                      title="Actualizar potencia optica"
+                      (click)="openSignal(onu)"
+                    >
+                      <i class="fas fa-gauge-high"></i>
+                    </button>
+                  }
+                </td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+    }
+  </div>
+</div>
+
+@if (registering()) {
+  <app-modal title="Registrar ONU" (close)="closeModals()">
+    <form [formGroup]="registerForm" (ngSubmit)="register()" id="onu-form">
+      <div class="form-group">
+        <label for="o-serial">Serial detectado</label>
+        <input id="o-serial" class="form-control mono" formControlName="serial" placeholder="HWTC-A1B2C3" />
+        @if (registerForm.controls.serial.touched && registerForm.controls.serial.invalid) {
+          <div class="field-error">El serial es obligatorio.</div>
+        }
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label for="o-vendor">Fabricante</label>
+          <select id="o-vendor" class="form-control" formControlName="vendor">
+            @for (vendor of vendors; track vendor.value) {
+              <option [value]="vendor.value">{{ vendor.text }}</option>
+            }
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="o-olt">OLT</label>
+          <input id="o-olt" class="form-control mono" formControlName="oltName" placeholder="OLT-01" />
+          @if (registerForm.controls.oltName.touched && registerForm.controls.oltName.invalid) {
+            <div class="field-error">Indica la OLT.</div>
+          }
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label for="o-pon">Puerto PON</label>
+        <input id="o-pon" class="form-control mono" formControlName="ponPort" placeholder="0/1/3" />
+        @if (registerForm.controls.ponPort.touched && registerForm.controls.ponPort.invalid) {
+          <div class="field-error">Indica el puerto PON.</div>
+        }
+      </div>
+
+      <p class="hint">
+        La ONU queda <b>sin autorizar</b> hasta que la asocies a un cliente desde la tabla.
+      </p>
+    </form>
+
+    <ng-container modalFooter>
+      <button type="button" class="btn btn-outline" (click)="closeModals()">Cancelar</button>
+      <button appRipple type="submit" form="onu-form" class="btn btn-grad" [disabled]="saving()">
+        @if (saving()) {
+          <i class="fas fa-circle-notch" style="animation: spinSlow 1s linear infinite"></i>
+          Registrando…
+        } @else {
+          <i class="fas fa-check"></i> Registrar ONU
+        }
+      </button>
+    </ng-container>
+  </app-modal>
+}
+
+@if (authorizing()) {
+  <app-modal title="Autorizar ONU" (close)="closeModals()">
+    <form [formGroup]="authorizeForm" (ngSubmit)="authorize()" id="auth-onu-form">
+      <div class="form-group">
+        <label>Serial</label>
+        <input class="form-control mono" [value]="authorizing()!.serial" disabled />
+      </div>
+      <div class="form-group">
+        <label>OLT · Puerto PON</label>
+        <input
+          class="form-control mono"
+          [value]="authorizing()!.oltName + ' · ' + authorizing()!.ponPort"
+          disabled
+        />
+      </div>
+      <div class="form-group">
+        <label for="o-client">Cliente</label>
+        <select id="o-client" class="form-control" formControlName="clientId">
+          @for (client of clients.value(); track client.id) {
+            <option [value]="client.id">{{ client.fullName }} — {{ client.document }}</option>
+          }
+        </select>
+        @if (clients.value().length === 0) {
+          <div class="field-error">
+            No hay clientes cargados. Crea el cliente en CRM antes de autorizar la ONU.
+          </div>
+        }
+      </div>
+    </form>
+
+    <ng-container modalFooter>
+      <button type="button" class="btn btn-outline" (click)="closeModals()">Cancelar</button>
+      <button
+        appRipple
+        type="submit"
+        form="auth-onu-form"
+        class="btn btn-accent"
+        [disabled]="saving() || clients.value().length === 0"
+      >
+        @if (saving()) {
+          <i class="fas fa-circle-notch" style="animation: spinSlow 1s linear infinite"></i>
+          Autorizando…
+        } @else {
+          <i class="fas fa-bolt"></i> Autorizar ONU
+        }
+      </button>
+    </ng-container>
+  </app-modal>
+}
+
+@if (readingSignal()) {
+  <app-modal title="Actualizar potencia optica" (close)="closeModals()">
+    <form [formGroup]="signalForm" (ngSubmit)="saveSignal()" id="signal-form">
+      <div class="form-group">
+        <label>ONU</label>
+        <input class="form-control mono" [value]="readingSignal()!.serial" disabled />
+      </div>
+      <div class="form-group">
+        <label for="s-rx">Rx Power (dBm)</label>
+        <input id="s-rx" class="form-control mono" type="number" step="0.1" formControlName="rxPower" />
+        <div class="hint">
+          Por debajo de <b>-27 dBm</b> el microservicio marca la ONU como LOS y conviene revisar el
+          empalme.
+        </div>
+      </div>
+    </form>
+
+    <ng-container modalFooter>
+      <button type="button" class="btn btn-outline" (click)="closeModals()">Cancelar</button>
+      <button appRipple type="submit" form="signal-form" class="btn btn-grad" [disabled]="saving()">
+        @if (saving()) {
+          <i class="fas fa-circle-notch" style="animation: spinSlow 1s linear infinite"></i>
+          Guardando…
+        } @else {
+          <i class="fas fa-check"></i> Guardar lectura
+        }
+      </button>
+    </ng-container>
+  </app-modal>
+}

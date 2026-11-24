@@ -1,0 +1,135 @@
+<div class="page">
+  <app-page-head
+    title="Modulos de la plataforma"
+    subtitle="Activa solo lo que este proveedor necesita"
+  >
+    @if (isSuperAdmin() && platformTenants.value().length > 0) {
+      <select
+        class="form-control"
+        style="align-self: center; width: auto; min-width: 220px"
+        aria-label="Proveedor"
+        [value]="tenant()?.id ?? ''"
+        (change)="selectedTenantId.set($any($event.target).value)"
+      >
+        @for (row of platformTenants.value(); track row.id) {
+          <option [value]="row.id">{{ row.name }}</option>
+        }
+      </select>
+    } @else if (tenant()) {
+      <span class="badge badge-violet" style="align-self: center">
+        <i class="fas fa-building"></i> {{ tenant()!.name }}
+      </span>
+    }
+    @if (tenant()) {
+      <app-status-badge [label]="planLabel(tenant()!.plan)" />
+      <app-status-badge [label]="statusLabel(tenant()!.status)" />
+    }
+  </app-page-head>
+
+  @if (loading()) {
+    <div class="card">
+      <div class="loading-row">
+        <i class="fas fa-circle-notch"></i>
+        Cargando los modulos del proveedor…
+      </div>
+    </div>
+  } @else if (!tenant()) {
+    <div class="card">
+      <div class="empty">
+        <i class="fas fa-building-circle-exclamation"></i>
+        @if (isSuperAdmin()) {
+          <div class="empty-title">Aun no hay proveedores</div>
+          <p>Registra el primer ISP en Configuracion &gt; Empresa y vuelve aqui para activar sus modulos.</p>
+        } @else {
+          <div class="empty-title">No se encontro el proveedor de tu sesion</div>
+          <p>
+            El JWT no trae un tenant valido o el proveedor fue eliminado. Vuelve a ingresar o revisa
+            el usuario en Configuracion.
+          </p>
+        }
+      </div>
+    </div>
+  } @else {
+    <div class="alert alert-info" style="margin-bottom: 1rem">
+      <i class="fas fa-circle-info"></i>
+      <span>
+        Los modulos marcados como <b>controlados</b> los consulta el guard del backend en cada
+        peticion: al apagarlos, las rutas del microservicio responden 403 y la seccion deja de
+        funcionar. Los informativos (hoy solo Automatizacion) no tienen backend propio: la consola
+        oculta su pagina, pero ninguna API los valida. Las funcionalidades dentro de un modulo tampoco las valida el backend: cada
+        pantalla las esconde por su cuenta. {{ enabledCount() }} de {{ rows().length }} modulos
+        activos.
+      </span>
+    </div>
+
+    <div class="mod-grid">
+      @for (row of rows(); track row.def.key) {
+        <div class="mod-card" [class.on]="row.enabled">
+          <div class="top">
+            <div class="mod-ico" [style.color]="row.def.color">
+              <i class="{{ row.def.icon }}"></i>
+            </div>
+            <label class="switch" [title]="row.enabled ? 'Desactivar' : 'Activar'">
+              <input
+                type="checkbox"
+                [checked]="row.enabled"
+                [disabled]="busyKey() !== null"
+                (change)="toggle(row.def.key, $any($event.target).checked)"
+              />
+              <span class="slider"></span>
+            </label>
+          </div>
+
+          <h4>{{ row.def.name }}</h4>
+          <p>{{ row.def.description }}</p>
+
+          <div class="row-wrap">
+            <span class="badge badge-gray mono" style="font-size: 0.64rem">{{ row.def.key }}</span>
+            @if (row.def.enforced) {
+              <span class="badge badge-violet">Controlado</span>
+            } @else {
+              <span class="badge badge-info">Informativo</span>
+            }
+          </div>
+
+          @if (row.featureState.length > 0) {
+            <div
+              style="
+                margin-top: 0.3rem;
+                padding-top: 0.6rem;
+                border-top: 1px dashed var(--border);
+                display: flex;
+                flex-direction: column;
+                gap: 0.55rem;
+              "
+            >
+              @for (fs of row.featureState; track fs.feature.key) {
+                <div class="row-wrap" style="justify-content: space-between; gap: 0.75rem">
+                  <div style="min-width: 0">
+                    <div style="font-size: 0.78rem; font-weight: 600">{{ fs.feature.label }}</div>
+                    <div class="cell-sub">{{ fs.feature.description }}</div>
+                  </div>
+                  <label
+                    class="switch"
+                    style="transform: scale(0.82); flex-shrink: 0"
+                    [title]="fs.enabled ? 'Ocultar' : 'Mostrar'"
+                  >
+                    <input
+                      type="checkbox"
+                      [checked]="fs.enabled"
+                      [disabled]="busyKey() !== null"
+                      (change)="toggleFeature(row.def.key, fs.feature.key, $any($event.target).checked)"
+                    />
+                    <span class="slider"></span>
+                  </label>
+                </div>
+              }
+            </div>
+          }
+
+          <span class="mod-tag">{{ row.def.group }}</span>
+        </div>
+      }
+    </div>
+  }
+</div>

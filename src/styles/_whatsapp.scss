@@ -1,0 +1,144 @@
+/* ============ BANDEJA DE WHATSAPP ============ */
+.wa-wrap {
+  display: grid;
+  grid-template-columns: 300px 1fr;
+  height: 560px;
+}
+.wa-list {
+  border-right: 1px solid var(--border);
+  overflow-y: auto;
+}
+.wa-conv {
+  padding: 0.8rem 1rem;
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+  display: flex;
+  gap: 0.7rem;
+  align-items: center;
+  width: 100%;
+  border-left: none;
+  border-right: none;
+  border-top: none;
+  background: transparent;
+  text-align: left;
+  font-family: inherit;
+  transition: background var(--t-fast), box-shadow var(--t-fast);
+}
+.wa-conv:hover,
+.wa-conv.active {
+  background: var(--surface-2);
+  box-shadow: inset 3px 0 0 var(--brand-1);
+}
+.wa-thread {
+  display: flex;
+  flex-direction: column;
+  background: #f0f2f5;
+  min-width: 0;
+}
+.wa-thread-head {
+  padding: 0.8rem 1rem;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  background: #fff;
+  flex-wrap: wrap;
+}
+.wa-msgs {
+  flex: 1;
+  padding: 1.2rem;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  background-image: radial-gradient(rgba(0, 0, 0, 0.02) 1px, transparent 1px);
+  background-size: 16px 16px;
+}
+.bubble {
+  max-width: 70%;
+  padding: 0.62rem 0.85rem;
+  border-radius: 14px;
+  font-size: 0.83rem;
+  line-height: 1.4;
+  box-shadow: var(--shadow-sm);
+  animation: popIn 0.4s var(--ease-spring) both;
+  word-break: break-word;
+}
+.bubble.in {
+  background: #fff;
+  align-self: flex-start;
+  border-top-left-radius: 4px;
+}
+.bubble.out {
+  background: #d9fdd3;
+  align-self: flex-end;
+  border-top-right-radius: 4px;
+}
+.bubble.bot {
+  background: var(--purple-light);
+  align-self: flex-end;
+  border-top-right-radius: 4px;
+}
+.bubble .t {
+  font-size: 0.62rem;
+  color: var(--text-muted);
+  margin-top: 0.3rem;
+  text-align: right;
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.35rem;
+}
+.wa-input {
+  padding: 0.8rem;
+  border-top: 1px solid var(--border);
+  display: flex;
+  gap: 0.6rem;
+  background: #fff;
+  align-items: flex-start;
+}
+
+/* ============ CONSOLA DE CHAT CON EL AGENTE IA ============ */
+.ai-chat {
+  display: flex;
+  flex-direction: column;
+  height: 420px;
+}
+.ai-msgs {
+  flex: 1;
+  padding: 1.1rem;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  background: var(--surface-2);
+}
+.ai-bubble {
+  max-width: 78%;
+  padding: 0.65rem 0.9rem;
+  border-radius: 14px;
+  font-size: 0.84rem;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  box-shadow: var(--shadow-sm);
+  animation: popIn 0.35s var(--ease-spring) both;
+}
+.ai-bubble.me {
+  background: var(--primary);
+  color: #fff;
+  align-self: flex-end;
+  border-top-right-radius: 4px;
+}
+.ai-bubble.agent {
+  background: #fff;
+  align-self: flex-start;
+  border-top-left-radius: 4px;
+}
+
+@media (max-width: 1024px) {
+  .wa-wrap {
+    grid-template-columns: 1fr;
+  }
+  .wa-list {
+    display: none;
+  }
+}

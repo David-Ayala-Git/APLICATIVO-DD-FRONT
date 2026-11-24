@@ -1,0 +1,314 @@
+<div class="page">
+  <app-page-head
+    title="Activaciones"
+    subtitle="Corte por mora y reactivacion, cruzando cartera con el estado en la red"
+  >
+    <button
+      appRipple
+      type="button"
+      class="btn btn-outline btn-sm"
+      [disabled]="invoices.loading() || clients.loading()"
+      (click)="reloadAll()"
+    >
+      <i class="fas fa-rotate"></i> Actualizar
+    </button>
+  </app-page-head>
+
+  <div class="stats-grid">
+    <app-stat-card
+      label="Clientes activos"
+      [value]="stats().active"
+      icon="fas fa-toggle-on"
+      tone="green"
+      trend="up"
+    />
+    <app-stat-card
+      label="Suspendidos"
+      [value]="stats().suspended"
+      icon="fas fa-toggle-off"
+      tone="red"
+    />
+    <app-stat-card
+      label="En mora"
+      [value]="stats().inArrears"
+      icon="fas fa-clock"
+      tone="orange"
+      [note]="copCompact(stats().arrearsAmount) + ' por cobrar'"
+      trend="down"
+    />
+    <app-stat-card
+      label="Listos para reactivar"
+      [value]="readyToRestore().length"
+      icon="fas fa-rotate-right"
+      tone="cyan"
+      note="Suspendidos sin facturas vencidas"
+    />
+  </div>
+
+  <div class="card" style="margin-bottom: 1rem">
+    <div class="card-header">
+      <div>
+        <h3>Como funciona el corte</h3>
+        <div class="sub">Dos pasos independientes, para no perder el rastro administrativo</div>
+      </div>
+    </div>
+    <div class="card-body">
+      <div class="flow">
+        <div class="flow-node">
+          <div class="ni" style="background: var(--danger-light); color: var(--danger)">
+            <i class="fas fa-calendar-xmark"></i>
+          </div>
+          <div class="nt">Factura vencida</div>
+          <div class="ns">dd_ms_billing</div>
+        </div>
+        <div class="flow-arrow"><i class="fas fa-arrow-right"></i></div>
+        <div class="flow-node">
+          <div class="ni" style="background: var(--warning-light); color: var(--warning)">
+            <i class="fab fa-whatsapp"></i>
+          </div>
+          <div class="nt">Aviso al cliente</div>
+          <div class="ns">dd_ms_comms</div>
+        </div>
+        <div class="flow-arrow"><i class="fas fa-arrow-right"></i></div>
+        <div class="flow-node">
+          <div class="ni" style="background: var(--purple-light); color: #7c3aed">
+            <i class="fas fa-ban"></i>
+          </div>
+          <div class="nt">Corte en router</div>
+          <div class="ns">RouterOS API</div>
+        </div>
+        <div class="flow-arrow"><i class="fas fa-arrow-right"></i></div>
+        <div class="flow-node">
+          <div class="ni" style="background: var(--success-light); color: var(--success)">
+            <i class="fas fa-play"></i>
+          </div>
+          <div class="nt">Pago → reactiva</div>
+          <div class="ns">Webhook de pasarela</div>
+        </div>
+      </div>
+      <p class="hint" style="margin-top: 0.8rem">
+        Para que este ciclo corra solo, arma el flujo en
+        <a [routerLink]="['/app/automation']">Automatizacion</a>. Desde aqui lo ejecutas a mano
+        cliente por cliente.
+      </p>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-header">
+      <h3>Clientes en mora</h3>
+      @if (stats().inArrears > 0) {
+        <span class="badge badge-danger">{{ cop(stats().arrearsAmount) }} en cartera</span>
+      }
+    </div>
+
+    <app-async-state
+      [loading]="invoices.loading() || clients.loading()"
+      [error]="invoices.error() ?? clients.error()"
+      [empty]="debtors().length === 0"
+      emptyIcon="fas fa-circle-check"
+      emptyTitle="Nadie en mora"
+      emptyText="Ningun cliente tiene facturas vencidas en este momento."
+      (retry)="reloadAll()"
+    />
+
+    @if (debtors().length > 0) {
+      <div class="table-wrap">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Cliente</th>
+              <th>Facturas vencidas</th>
+              <th>Deuda</th>
+              <th>Dias de mora</th>
+              <th>Estado CRM</th>
+              <th>Acciones</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (row of debtors(); track row.client.id) {
+              <tr>
+                <td>
+                  <div class="cell-main">{{ row.client.fullName }}</div>
+                  <div class="cell-sub">
+                    {{ row.client.document }} ·
+                    <span class="mono">{{ row.client.ipAddress || 'sin IP' }}</span>
+                  </div>
+                </td>
+                <td>
+                  <span class="badge badge-warning">{{ row.invoices.length }}</span>
+                  <div class="cell-sub">
+                    @for (inv of row.invoices; track inv.id) {
+                      <span>{{ inv.period }}&nbsp;</span>
+                    }
+                  </div>
+                </td>
+                <td style="font-weight: 700; color: var(--danger)">{{ cop(row.amount) }}</td>
+                <td>
+                  <span
+                    class="badge"
+                    [class.badge-danger]="row.daysOverdue > 15"
+                    [class.badge-warning]="row.daysOverdue > 5 && row.daysOverdue <= 15"
+                    [class.badge-info]="row.daysOverdue <= 5"
+                  >
+                    {{ row.daysOverdue }} dia(s)
+                  </span>
+                </td>
+                <td>
+                  @if (row.client.status === 'SUSPENDED') {
+                    <span class="badge badge-danger"><i class="fas fa-circle"></i> Suspendido</span>
+                  } @else {
+                    <span class="badge badge-success"><i class="fas fa-circle"></i> Activo</span>
+                  }
+                </td>
+                <td class="actions">
+                  <button
+                    type="button"
+                    class="btn btn-danger btn-sm"
+                    title="Deshabilitar el PPPoE secret en el router"
+                    (click)="openNetworkAction('cut', row.client)"
+                  >
+                    <i class="fas fa-ban"></i> Cortar en red
+                  </button>
+                  @if (row.client.status === 'ACTIVE') {
+                    <button
+                      type="button"
+                      class="btn btn-outline btn-sm"
+                      title="Solo cambia el estado en el CRM"
+                      [disabled]="busyId() === row.client.id"
+                      (click)="setCrmStatus(row.client, 'SUSPENDED')"
+                    >
+                      Suspender en CRM
+                    </button>
+                  }
+                </td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+    }
+  </div>
+
+  @if (readyToRestore().length > 0) {
+    <div class="card" style="margin-top: 1rem">
+      <div class="card-header">
+        <h3>Listos para reactivar</h3>
+        <span class="badge badge-success">{{ readyToRestore().length }} sin deuda</span>
+      </div>
+      <div class="table-wrap">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Cliente</th>
+              <th>IP / ONU</th>
+              <th>Acciones</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (client of readyToRestore(); track client.id) {
+              <tr>
+                <td>
+                  <div class="cell-main">{{ client.fullName }}</div>
+                  <div class="cell-sub">{{ client.document }}</div>
+                </td>
+                <td class="cell-mono">
+                  {{ client.ipAddress || '—' }}
+                  <div class="cell-sub">{{ client.onuSerial || 'Sin ONU' }}</div>
+                </td>
+                <td class="actions">
+                  <button
+                    type="button"
+                    class="btn btn-success btn-sm"
+                    (click)="openNetworkAction('enable', client)"
+                  >
+                    <i class="fas fa-play"></i> Reactivar en red
+                  </button>
+                  <button
+                    type="button"
+                    class="btn btn-outline btn-sm"
+                    [disabled]="busyId() === client.id"
+                    (click)="setCrmStatus(client, 'ACTIVE')"
+                  >
+                    Activar en CRM
+                  </button>
+                </td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+    </div>
+  }
+</div>
+
+@if (networkAction()) {
+  <app-modal
+    [title]="networkAction()!.mode === 'cut' ? 'Cortar servicio en el router' : 'Reactivar servicio en el router'"
+    (close)="closeModal()"
+  >
+    <form [formGroup]="actionForm" (ngSubmit)="runNetworkAction()" id="net-action-form">
+      <div class="form-group">
+        <label>Cliente</label>
+        <input class="form-control" [value]="networkAction()!.client.fullName" disabled />
+      </div>
+
+      <div class="form-group">
+        <label for="na-router">Router</label>
+        <select id="na-router" class="form-control" formControlName="routerId">
+          @for (router of routers.value(); track router.id) {
+            <option [value]="router.id">{{ router.name }} — {{ router.host }}</option>
+          }
+        </select>
+        @if (routers.value().length === 0) {
+          <div class="field-error">
+            No hay routers vinculados. Agregalos en MikroTik antes de cortar o reactivar.
+          </div>
+        }
+      </div>
+
+      <div class="form-group">
+        <label for="na-secret">PPPoE secret</label>
+        <input id="na-secret" class="form-control mono" formControlName="secretId" />
+        @if (actionForm.controls.secretId.touched && actionForm.controls.secretId.invalid) {
+          <div class="field-error">Indica el secret: letras, numeros y . _ @ - sin espacios.</div>
+        }
+        <div class="hint">
+          Se sugiere el usuario PPPoE del cliente o, si no tiene, su documento. Confirmalo contra <b>/ppp/secret</b> en el router: si
+          no coincide, la operacion falla y el cliente no cambia de estado.
+        </div>
+      </div>
+
+      @if (networkAction()!.mode === 'cut') {
+        <div class="alert alert-warning">
+          <i class="fas fa-triangle-exclamation"></i>
+          <span>
+            El cliente perdera la conexion de inmediato. Esta accion no cambia su estado en el CRM:
+            hazlo aparte si quieres dejar constancia.
+          </span>
+        </div>
+      }
+    </form>
+
+    <ng-container modalFooter>
+      <button type="button" class="btn btn-outline" (click)="closeModal()">Cancelar</button>
+      <button
+        appRipple
+        type="submit"
+        form="net-action-form"
+        class="btn"
+        [class.btn-danger]="networkAction()!.mode === 'cut'"
+        [class.btn-success]="networkAction()!.mode === 'enable'"
+        [disabled]="saving() || routers.value().length === 0"
+      >
+        @if (saving()) {
+          <i class="fas fa-circle-notch" style="animation: spinSlow 1s linear infinite"></i>
+          Ejecutando…
+        } @else {
+          <i class="fas fa-bolt"></i>
+          {{ networkAction()!.mode === 'cut' ? 'Cortar ahora' : 'Reactivar ahora' }}
+        }
+      </button>
+    </ng-container>
+  </app-modal>
+}

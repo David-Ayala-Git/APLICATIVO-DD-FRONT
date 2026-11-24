@@ -1,0 +1,229 @@
+<div class="page">
+  <app-page-head
+    title="WhatsApp Business"
+    subtitle="Atencion, recordatorios y notificaciones via WhatsApp Cloud API"
+  >
+    <button
+      appRipple
+      type="button"
+      class="btn btn-outline btn-sm"
+      [disabled]="messages.loading()"
+      (click)="messages.reload()"
+    >
+      <i class="fas fa-rotate"></i> Actualizar
+    </button>
+    <button appRipple type="button" class="btn btn-grad btn-sm" (click)="openCompose()">
+      <i class="fas fa-paper-plane"></i> Enviar plantilla
+    </button>
+  </app-page-head>
+
+  <div class="card" style="overflow: hidden">
+    @if (messages.loading() || messages.error()) {
+      <app-async-state
+        [loading]="messages.loading()"
+        [error]="messages.error()"
+        (retry)="messages.reload()"
+      />
+    } @else if (conversations().length === 0) {
+      <div class="empty">
+        <i class="fab fa-whatsapp"></i>
+        <div class="empty-title">Sin conversaciones todavia</div>
+        <p>
+          Envia una plantilla o espera el primer mensaje entrante. Los mensajes del cliente llegan
+          por el webhook de Meta que apunta a
+          <span class="mono">/api/whatsapp/webhook</span>.
+        </p>
+      </div>
+    } @else {
+      <div class="wa-wrap">
+        <div class="wa-list">
+          <div style="padding: 0.7rem 0.8rem; border-bottom: 1px solid var(--border)">
+            <div class="topbar-search" style="width: 100%">
+              <i class="fas fa-search"></i>
+              <input
+                placeholder="Buscar numero o cliente…"
+                [value]="search()"
+                (input)="search.set($any($event.target).value)"
+                aria-label="Buscar conversacion"
+              />
+            </div>
+          </div>
+
+          @for (conv of filteredConversations(); track conv.phone) {
+            <button
+              type="button"
+              class="wa-conv"
+              [class.active]="active()?.phone === conv.phone"
+              (click)="select(conv.phone)"
+            >
+              <span class="avatar-sm" style="background: var(--success-light); color: var(--success)">
+                {{ initials(conv.clientName) }}
+              </span>
+              <div class="flex-1" style="min-width: 0">
+                <div class="cell-main">{{ conv.clientName }}</div>
+                <div
+                  class="cell-sub"
+                  style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap"
+                >
+                  {{ conv.last.body || conv.last.templateName }}
+                </div>
+              </div>
+              @if (conv.unread > 0) {
+                <span class="badge badge-success" style="align-self: flex-start">
+                  {{ conv.unread }}
+                </span>
+              }
+            </button>
+          }
+        </div>
+
+        <div class="wa-thread">
+          @if (active()) {
+            <div class="wa-thread-head">
+              <span class="avatar-sm" style="background: var(--success-light); color: var(--success)">
+                {{ initials(active()!.clientName) }}
+              </span>
+              <div>
+                <div class="cell-main">{{ active()!.clientName }}</div>
+                <div class="cell-sub mono">{{ active()!.phone }}</div>
+              </div>
+              <button
+                type="button"
+                class="btn btn-outline btn-sm ml-auto"
+                (click)="openCompose(active()!.phone)"
+              >
+                <i class="fas fa-file-lines"></i> Plantilla
+              </button>
+            </div>
+
+            <div class="wa-msgs">
+              @for (message of active()!.messages; track message.id) {
+                <div class="bubble" [class.in]="message.direction === 'IN'" [class.out]="message.direction === 'OUT'">
+                  {{ message.body || message.templateName }}
+                  <div class="t">
+                    @if (message.templateName && message.direction === 'OUT') {
+                      <span>{{ message.templateName }}</span>
+                    }
+                    <span>{{ timeShort(message.sentAt ?? message.createdAt) }}</span>
+                    <span class="badge {{ statusLabel(message.status).badge }}" style="font-size: 0.58rem">
+                      {{ statusLabel(message.status).text }}
+                    </span>
+                  </div>
+                </div>
+              }
+            </div>
+
+            <div class="wa-input">
+              <div class="alert alert-info" style="flex: 1; margin: 0">
+                <i class="fas fa-circle-info"></i>
+                <span>
+                  La Cloud API solo admite texto libre dentro de las 24 horas siguientes al ultimo
+                  mensaje del cliente. Desde la consola se envian plantillas aprobadas.
+                </span>
+              </div>
+              <button
+                appRipple
+                type="button"
+                class="btn btn-success"
+                (click)="openCompose(active()!.phone)"
+              >
+                <i class="fas fa-paper-plane"></i> Enviar
+              </button>
+            </div>
+          }
+        </div>
+      </div>
+    }
+  </div>
+
+  @if (stats().total > 0) {
+    <div class="card" style="margin-top: 1rem">
+      <div class="card-body row-wrap" style="gap: 2rem">
+        <div>
+          <div class="stat-label">Mensajes totales</div>
+          <div class="stat-value">{{ stats().total }}</div>
+        </div>
+        <div>
+          <div class="stat-label">Entrantes</div>
+          <div class="stat-value">{{ stats().incoming }}</div>
+        </div>
+        <div>
+          <div class="stat-label">Salientes</div>
+          <div class="stat-value">{{ stats().outgoing }}</div>
+        </div>
+        <div>
+          <div class="stat-label">Fallidos</div>
+          <div class="stat-value" [style.color]="stats().failed > 0 ? 'var(--danger)' : null">
+            {{ stats().failed }}
+          </div>
+        </div>
+      </div>
+    </div>
+  }
+</div>
+
+@if (composing()) {
+  <app-modal title="Enviar plantilla de WhatsApp" (close)="close()">
+    <form [formGroup]="sendForm" (ngSubmit)="send()" id="wa-form">
+      <div class="form-group">
+        <label for="wa-phone">Numero destino</label>
+        <input id="wa-phone" class="form-control mono" formControlName="phone" placeholder="573001234567" />
+        @if (sendForm.controls.phone.touched && sendForm.controls.phone.invalid) {
+          <div class="field-error">El numero es obligatorio.</div>
+        }
+        <div class="hint">Formato internacional sin "+" ni espacios.</div>
+      </div>
+
+      <div class="form-group">
+        <label for="wa-template">Nombre de la plantilla</label>
+        <input
+          id="wa-template"
+          class="form-control mono"
+          formControlName="templateName"
+          placeholder="recordatorio_pago"
+        />
+        @if (sendForm.controls.templateName.touched && sendForm.controls.templateName.invalid) {
+          <div class="field-error">Indica la plantilla aprobada en Meta Business.</div>
+        }
+      </div>
+
+      <div class="form-group">
+        <label for="wa-params">Parametros del cuerpo</label>
+        <input
+          id="wa-params"
+          class="form-control"
+          formControlName="bodyParams"
+          placeholder="Carlos | $120.000 | 25/10/2026"
+        />
+        @if (sendForm.controls.bodyParams.touched && sendForm.controls.bodyParams.invalid) {
+          <div class="field-error">Escribe al menos un parametro.</div>
+        }
+        <div class="hint">
+          Separa cada variable con <b>|</b> en el mismo orden que las definiste en la plantilla
+          (&#123;&#123;1&#125;&#125;, &#123;&#123;2&#125;&#125;, …).
+        </div>
+      </div>
+
+      <div class="alert alert-warning">
+        <i class="fas fa-triangle-exclamation"></i>
+        <span>
+          El envio requiere <span class="mono">WHATSAPP_TOKEN</span> y
+          <span class="mono">WHATSAPP_PHONE_NUMBER_ID</span> configurados en el entorno. Sin ellos,
+          el microservicio responde 502.
+        </span>
+      </div>
+    </form>
+
+    <ng-container modalFooter>
+      <button type="button" class="btn btn-outline" (click)="close()">Cancelar</button>
+      <button appRipple type="submit" form="wa-form" class="btn btn-success" [disabled]="saving()">
+        @if (saving()) {
+          <i class="fas fa-circle-notch" style="animation: spinSlow 1s linear infinite"></i>
+          Enviando…
+        } @else {
+          <i class="fas fa-paper-plane"></i> Enviar
+        }
+      </button>
+    </ng-container>
+  </app-modal>
+}

@@ -1,0 +1,244 @@
+/* ============ PANTALLA DE INGRESO ============ */
+.auth-screen {
+  width: 100%;
+  min-height: 100vh;
+  display: flex;
+}
+
+.auth-left {
+  flex: 1.1;
+  background: var(--sidebar-bg);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 4rem;
+  position: relative;
+  overflow: hidden;
+}
+/* Auroras animadas */
+.auth-left::before {
+  content: '';
+  position: absolute;
+  inset: -25%;
+  background:
+    radial-gradient(520px 420px at 22% 18%, rgba(124, 58, 237, 0.55), transparent 62%),
+    radial-gradient(560px 460px at 82% 82%, rgba(6, 182, 212, 0.42), transparent 60%),
+    radial-gradient(420px 380px at 65% 15%, rgba(168, 85, 247, 0.28), transparent 65%);
+  filter: blur(22px);
+  opacity: 0.85;
+  animation: auroraA 18s ease-in-out infinite;
+  will-change: transform;
+}
+.auth-left::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(124, 58, 237, 0.1) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(6, 182, 212, 0.1) 1px, transparent 1px);
+  background-size: 42px 42px;
+  mask-image: radial-gradient(circle at 30% 40%, #000, transparent 70%);
+  -webkit-mask-image: radial-gradient(circle at 30% 40%, #000, transparent 70%);
+  animation: gridPan 9s linear infinite;
+}
+
+/* Lienzo de fibra optica */
+.fiber-bg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 0;
+  display: block;
+  pointer-events: none;
+  mask-image: linear-gradient(97deg, rgba(0, 0, 0, 0.42) 0%, rgba(0, 0, 0, 0.74) 40%, #000 100%);
+  -webkit-mask-image: linear-gradient(97deg, rgba(0, 0, 0, 0.42) 0%, rgba(0, 0, 0, 0.74) 40%, #000 100%);
+}
+
+/* Barrido lento, como el refresco de un monitor de NOC */
+.auth-scrim {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  overflow: hidden;
+  background: linear-gradient(
+    100deg,
+    rgba(11, 16, 32, 0.8) 0%,
+    rgba(11, 16, 32, 0.46) 44%,
+    rgba(11, 16, 32, 0.04) 100%
+  );
+}
+.auth-scrim::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 38%;
+  background: linear-gradient(
+    180deg,
+    transparent,
+    rgba(6, 182, 212, 0.07) 45%,
+    rgba(124, 58, 237, 0.06) 60%,
+    transparent
+  );
+  animation: scanY 9s linear infinite;
+}
+
+.auth-brand-row {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+  margin-bottom: 2.2rem;
+  position: relative;
+  z-index: 2;
+  animation: rise 0.7s var(--ease-out) both;
+}
+.auth-brand-row .bt {
+  color: #fff;
+  font-size: 1.35rem;
+  font-weight: 800;
+  line-height: 1.05;
+}
+.auth-brand-row .bs {
+  color: var(--accent);
+  font-size: 0.72rem;
+  letter-spacing: 0.32em;
+  text-transform: uppercase;
+  font-weight: 600;
+}
+
+.auth-left h1 {
+  color: #fff;
+  font-size: 2.5rem;
+  font-weight: 800;
+  line-height: 1.12;
+  max-width: 15ch;
+  position: relative;
+  z-index: 2;
+  margin-bottom: 1rem;
+  letter-spacing: -1px;
+  animation: rise 0.7s 0.08s var(--ease-out) both;
+}
+.auth-left h1 em {
+  font-style: normal;
+  background: linear-gradient(110deg, #a78bfa, #22d3ee, #a78bfa);
+  background-size: 220% auto;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: gradShift 6s linear infinite;
+}
+.auth-left .lede {
+  color: #aeb6cc;
+  font-size: 1rem;
+  max-width: 42ch;
+  position: relative;
+  z-index: 2;
+  margin-bottom: 2.4rem;
+  line-height: 1.6;
+  animation: rise 0.7s 0.16s var(--ease-out) both;
+}
+
+.auth-mods {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 0.6rem;
+  max-width: 440px;
+  position: relative;
+  z-index: 2;
+}
+.auth-mods div {
+  color: #c7cde0;
+  font-size: 0.83rem;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.55rem 0.75rem;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--sidebar-line);
+  border-radius: 10px;
+  backdrop-filter: blur(6px);
+  animation: riseSm 0.6s var(--ease-out) both;
+  transition: transform var(--t) var(--ease-out), background var(--t), border-color var(--t);
+}
+.auth-mods div:nth-child(1) { animation-delay: 0.22s; }
+.auth-mods div:nth-child(2) { animation-delay: 0.26s; }
+.auth-mods div:nth-child(3) { animation-delay: 0.3s; }
+.auth-mods div:nth-child(4) { animation-delay: 0.34s; }
+.auth-mods div:nth-child(5) { animation-delay: 0.38s; }
+.auth-mods div:nth-child(6) { animation-delay: 0.42s; }
+.auth-mods div:nth-child(7) { animation-delay: 0.46s; }
+.auth-mods div:nth-child(8) { animation-delay: 0.5s; }
+.auth-mods div:hover {
+  transform: translateY(-3px);
+  background: rgba(255, 255, 255, 0.09);
+  border-color: rgba(6, 182, 212, 0.45);
+}
+.auth-mods i {
+  color: var(--accent);
+  width: 16px;
+  text-align: center;
+  transition: transform var(--t) var(--ease-spring);
+}
+.auth-mods div:hover i {
+  transform: scale(1.22);
+}
+
+.auth-right {
+  flex: 0.9;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem;
+  background: #fff;
+  position: relative;
+}
+.auth-right::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(600px 300px at 80% 0%, rgba(124, 58, 237, 0.06), transparent 60%),
+    radial-gradient(500px 280px at 10% 100%, rgba(6, 182, 212, 0.06), transparent 60%);
+  pointer-events: none;
+}
+.auth-box {
+  width: 100%;
+  max-width: 390px;
+  position: relative;
+  z-index: 1;
+}
+.auth-box > * {
+  animation: riseSm 0.6s var(--ease-out) both;
+}
+.auth-box > *:nth-child(1) { animation-delay: 0.05s; }
+.auth-box > *:nth-child(2) { animation-delay: 0.1s; }
+.auth-box > *:nth-child(3) { animation-delay: 0.16s; }
+.auth-box > *:nth-child(4) { animation-delay: 0.22s; }
+.auth-box > *:nth-child(5) { animation-delay: 0.28s; }
+.auth-box > *:nth-child(6) { animation-delay: 0.34s; }
+.auth-box > *:nth-child(7) { animation-delay: 0.4s; }
+.auth-box h2 {
+  font-size: 1.65rem;
+  font-weight: 800;
+  margin-bottom: 0.35rem;
+  letter-spacing: -0.6px;
+}
+.auth-box .sub {
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+  margin-bottom: 2rem;
+}
+
+@media (max-width: 1024px) {
+  .auth-screen {
+    flex-direction: column;
+  }
+  .auth-left {
+    padding: 2.5rem 1.6rem;
+  }
+  .auth-left h1 {
+    font-size: 1.9rem;
+  }
+}

@@ -1,0 +1,106 @@
+<div class="auth-screen">
+  <div class="auth-left">
+    <app-fiber-canvas />
+    <div class="auth-scrim" aria-hidden="true"></div>
+
+    <div class="auth-brand-row">
+      <div class="logo-badge">D&amp;D</div>
+      <div>
+        <div class="bt">D&amp;D Conexiones SAS</div>
+        <div class="bs">ISP Platform</div>
+      </div>
+    </div>
+
+    <h1>
+      La plataforma integral para
+      <em>administrar, automatizar y hacer crecer</em> tu ISP.
+    </h1>
+    <p class="lede">
+      CRM, facturacion, red MikroTik, GPON, cobertura, tecnicos, IA y automatizacion — todo en una
+      sola consola multitenant.
+    </p>
+
+    <div class="auth-mods">
+      @for (mod of modules; track mod.text) {
+        <div><i class="{{ mod.icon }}"></i> {{ mod.text }}</div>
+      }
+    </div>
+  </div>
+
+  <div class="auth-right">
+    <form class="auth-box" [formGroup]="form" (ngSubmit)="submit()">
+      <h2>Bienvenido de nuevo</h2>
+      <p class="sub">Ingresa a tu consola de operaciones</p>
+
+      @if (error()) {
+        <div class="alert alert-danger" style="margin-bottom: 1.15rem">
+          <i class="fas fa-circle-exclamation"></i>
+          <span>{{ error() }}</span>
+        </div>
+      }
+
+      <div class="form-group">
+        <label for="email">Correo</label>
+        <input
+          id="email"
+          class="form-control"
+          type="email"
+          autocomplete="username"
+          placeholder="admin@ddconexiones.co"
+          formControlName="email"
+          [attr.aria-invalid]="form.controls.email.touched && form.controls.email.invalid"
+        />
+        @if (form.controls.email.touched && form.controls.email.invalid) {
+          <div class="field-error">Escribe un correo valido.</div>
+        }
+      </div>
+
+      <div class="form-group">
+        <label for="password">Contrasena</label>
+        <div style="position: relative">
+          <input
+            id="password"
+            class="form-control"
+            [type]="showPassword() ? 'text' : 'password'"
+            autocomplete="current-password"
+            placeholder="••••••••"
+            formControlName="password"
+            style="padding-right: 2.8rem"
+            [attr.aria-invalid]="form.controls.password.touched && form.controls.password.invalid"
+          />
+          <button
+            type="button"
+            class="icon-btn"
+            style="position: absolute; right: 2px; top: 1px"
+            [attr.aria-label]="showPassword() ? 'Ocultar contrasena' : 'Mostrar contrasena'"
+            (click)="togglePassword()"
+          >
+            <i class="fas" [class.fa-eye]="!showPassword()" [class.fa-eye-slash]="showPassword()"></i>
+          </button>
+        </div>
+        @if (form.controls.password.touched && form.controls.password.invalid) {
+          <div class="field-error">La contrasena es obligatoria.</div>
+        }
+      </div>
+
+      <button
+        appRipple
+        type="submit"
+        class="btn btn-grad btn-block"
+        style="margin: 0.5rem 0 1rem"
+        [disabled]="submitting()"
+      >
+        @if (submitting()) {
+          <i class="fas fa-circle-notch" style="animation: spinSlow 1s linear infinite"></i>
+          Verificando…
+        } @else {
+          <i class="fas fa-right-to-bracket"></i> Ingresar
+        }
+      </button>
+
+      <p class="hint" style="text-align: center">
+        Acceso protegido con JWT · el proveedor se toma de tu usuario
+      </p>
+    </form>
+  </div>
+</div>

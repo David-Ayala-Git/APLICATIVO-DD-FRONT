@@ -1,0 +1,207 @@
+<div class="page">
+  <app-page-head
+    title="Agentes de IA"
+    subtitle="Asistentes que atienden clientes, gestionan cartera y apoyan al NOC"
+  >
+    <button
+      appRipple
+      type="button"
+      class="btn btn-outline btn-sm"
+      [disabled]="agents.loading()"
+      (click)="agents.reload()"
+    >
+      <i class="fas fa-rotate"></i> Actualizar
+    </button>
+    <button appRipple type="button" class="btn btn-grad btn-sm" (click)="openCreate()">
+      <i class="fas fa-plus"></i> Nuevo agente
+    </button>
+  </app-page-head>
+
+  <div class="card" style="margin-bottom: 1rem">
+    <div class="card-body row-wrap" style="gap: 2rem">
+      <div>
+        <div class="stat-label">Agentes configurados</div>
+        <div class="stat-value">{{ stats().total }}</div>
+      </div>
+      <div>
+        <div class="stat-label">Habilitados</div>
+        <div class="stat-value" style="color: var(--success)">{{ stats().enabled }}</div>
+      </div>
+      <div>
+        <div class="stat-label">Canales cubiertos</div>
+        <div class="stat-value">{{ stats().channels }}</div>
+      </div>
+    </div>
+  </div>
+
+  @if (agents.loading() || agents.error()) {
+    <div class="card">
+      <app-async-state
+        [loading]="agents.loading()"
+        [error]="agents.error()"
+        (retry)="agents.reload()"
+      />
+    </div>
+  } @else if (agents.value().length === 0) {
+    <div class="card">
+      <div class="empty">
+        <i class="fas fa-robot"></i>
+        <div class="empty-title">Sin agentes configurados</div>
+        <p>
+          Crea el primer asistente con sus instrucciones y las herramientas que puede usar.
+          Necesita <span class="mono">ANTHROPIC_API_KEY</span> en el entorno para responder.
+        </p>
+      </div>
+    </div>
+  } @else {
+    <div class="mod-grid">
+      @for (agent of agents.value(); track agent.id) {
+        <div class="mod-card" [class.on]="agent.enabled">
+          <div class="top">
+            <div class="mod-ico" style="background: var(--purple-light); color: #7c3aed">
+              <i class="fas fa-robot"></i>
+            </div>
+            @if (agent.enabled) {
+              <span class="badge badge-success"><i class="fas fa-circle"></i> Activo</span>
+            } @else {
+              <span class="badge badge-gray">Inactivo</span>
+            }
+          </div>
+
+          <h4>{{ agent.name }}</h4>
+          <p>{{ agent.systemPrompt }}</p>
+
+          @if (toolList(agent).length > 0) {
+            <div class="row-wrap">
+              @for (tool of toolList(agent); track tool) {
+                <span class="badge badge-info mono" style="font-size: 0.64rem">{{ tool }}</span>
+              }
+            </div>
+          }
+
+          <span class="mod-tag">Canal: {{ channelText(agent.channel) }}</span>
+
+          <button
+            appRipple
+            type="button"
+            class="btn btn-outline btn-sm"
+            (click)="openChat(agent)"
+          >
+            <i class="fas fa-comments"></i> Probar en consola
+          </button>
+        </div>
+      }
+    </div>
+  }
+</div>
+
+@if (creating()) {
+  <app-modal title="Nuevo agente de IA" wide (close)="closeModals()">
+    <form [formGroup]="form" (ngSubmit)="save()" id="agent-form">
+      <div class="form-row">
+        <div class="form-group">
+          <label for="ag-name">Nombre del agente</label>
+          <input id="ag-name" class="form-control" formControlName="name" placeholder="Asistente de soporte" />
+          @if (form.controls.name.touched && form.controls.name.invalid) {
+            <div class="field-error">El nombre es obligatorio.</div>
+          }
+        </div>
+        <div class="form-group">
+          <label for="ag-channel">Canal</label>
+          <select id="ag-channel" class="form-control" formControlName="channel">
+            @for (channel of channels; track channel.value) {
+              <option [value]="channel.value">{{ channel.text }}</option>
+            }
+          </select>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label for="ag-prompt">Instrucciones (system prompt)</label>
+        <textarea
+          id="ag-prompt"
+          class="form-control"
+          rows="5"
+          formControlName="systemPrompt"
+          placeholder="Eres el asistente de D&D Conexiones. Atiende con tono cercano, resuelve dudas de servicio y crea un ticket cuando el cliente reporte una falla que no puedas solucionar."
+        ></textarea>
+        @if (form.controls.systemPrompt.touched && form.controls.systemPrompt.invalid) {
+          <div class="field-error">Describe como debe comportarse el agente.</div>
+        }
+      </div>
+
+      <div class="form-group">
+        <label for="ag-tools">Herramientas habilitadas</label>
+        <input
+          id="ag-tools"
+          class="form-control mono"
+          formControlName="tools"
+          placeholder="consultar_cliente, crear_ticket, estado_pago"
+        />
+        <div class="hint">Separadas por comas, tal como las espera el microservicio.</div>
+      </div>
+    </form>
+
+    <ng-container modalFooter>
+      <button type="button" class="btn btn-outline" (click)="closeModals()">Cancelar</button>
+      <button appRipple type="submit" form="agent-form" class="btn btn-grad" [disabled]="saving()">
+        @if (saving()) {
+          <i class="fas fa-circle-notch" style="animation: spinSlow 1s linear infinite"></i>
+          Creando…
+        } @else {
+          <i class="fas fa-robot"></i> Crear agente
+        }
+      </button>
+    </ng-container>
+  </app-modal>
+}
+
+@if (chattingWith()) {
+  <app-modal [title]="'Consola · ' + chattingWith()!.name" wide (close)="closeModals()">
+    <div class="ai-chat">
+      <div class="ai-msgs">
+        @if (turns().length === 0) {
+          <div class="empty">
+            <i class="fas fa-comments"></i>
+            <div class="empty-title">Conversacion nueva</div>
+            <p>Escribe un mensaje como lo haria un cliente para ver como responde el agente.</p>
+          </div>
+        }
+        @for (turn of turns(); track $index) {
+          <div class="ai-bubble" [class.me]="turn.from === 'me'" [class.agent]="turn.from === 'agent'">
+            {{ turn.text }}
+          </div>
+        }
+        @if (thinking()) {
+          <div class="ai-bubble agent">
+            <i class="fas fa-circle-notch" style="animation: spinSlow 1s linear infinite"></i>
+            Pensando…
+          </div>
+        }
+      </div>
+
+      <form
+        [formGroup]="chatForm"
+        (ngSubmit)="sendMessage()"
+        style="padding: 0.8rem; border-top: 1px solid var(--border); display: flex; gap: 0.6rem"
+      >
+        <input
+          class="form-control"
+          formControlName="message"
+          placeholder="Hola, se me cayo el internet desde anoche…"
+          aria-label="Mensaje para el agente"
+        />
+        <button appRipple type="submit" class="btn btn-grad" [disabled]="thinking()">
+          <i class="fas fa-paper-plane"></i>
+        </button>
+      </form>
+    </div>
+
+    <ng-container modalFooter>
+      <span class="hint ml-auto" style="margin: 0">
+        Sesion de prueba; el historial queda en dd_ms_comms.
+      </span>
+      <button type="button" class="btn btn-outline" (click)="closeModals()">Cerrar</button>
+    </ng-container>
+  </app-modal>
+}

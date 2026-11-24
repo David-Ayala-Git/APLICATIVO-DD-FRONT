@@ -1,0 +1,569 @@
+<div class="page">
+  <app-page-head
+    title="Configuracion"
+    subtitle="Datos del proveedor, estado de las integraciones y usuarios de la consola"
+  />
+
+  <div class="tabs">
+    <button type="button" class="tab" [class.active]="tab() === 'empresa'" (click)="tab.set('empresa')">
+      Empresa
+    </button>
+    <!-- las integraciones (routers, OLT, agentes) son de un proveedor: el Super Admin no tiene -->
+    @if (tenant()) {
+      <button
+        type="button"
+        class="tab"
+        [class.active]="tab() === 'integraciones'"
+        (click)="tab.set('integraciones')"
+      >
+        Integraciones
+      </button>
+    }
+    <button type="button" class="tab" [class.active]="tab() === 'usuarios'" (click)="tab.set('usuarios')">
+      Usuarios y roles
+    </button>
+  </div>
+
+  @if (tab() === 'empresa') {
+    @if (tenants.loading() || tenants.error()) {
+      <div class="card">
+        <app-async-state
+          [loading]="tenants.loading()"
+          [error]="tenants.error()"
+          (retry)="tenants.reload()"
+        />
+      </div>
+    } @else if (!tenant() && !isSuperAdmin()) {
+      <div class="card">
+        <div class="empty">
+          <i class="fas fa-building-circle-exclamation"></i>
+          <div class="empty-title">Sin proveedor asociado</div>
+          <p>Tu usuario no tiene un tenant valido en el JWT. Vuelve a ingresar.</p>
+        </div>
+      </div>
+    } @else {
+      @if (tenant()) {
+        <div class="card">
+          <div class="card-header">
+            <h3>Datos del proveedor</h3>
+            <div class="row-wrap">
+              <app-status-badge [label]="planLabel(tenant()!.plan)" />
+              <app-status-badge [label]="statusLabel(tenant()!.status)" />
+            </div>
+          </div>
+          <div class="card-body">
+            <div class="form-row">
+              <div class="form-group">
+                <label>Razon social</label>
+                <input class="form-control" [value]="tenant()!.name" disabled />
+              </div>
+              <div class="form-group">
+                <label>Identificador (slug)</label>
+                <input class="form-control mono" [value]="tenant()!.slug" disabled />
+              </div>
+            </div>
+
+            <form class="form-row" [formGroup]="brandForm" (ngSubmit)="saveBranding()">
+              <div class="form-group">
+                <label for="b-primary">Color principal de marca</label>
+                <div class="row" style="gap: 0.5rem">
+                  <input id="b-primary" type="color" formControlName="brandPrimary" style="width: 44px; height: 38px; padding: 2px" />
+                  <input class="form-control mono" [value]="brandForm.controls.brandPrimary.value" disabled />
+                </div>
+              </div>
+              <div class="form-group">
+                <label for="b-accent">Color de acento</label>
+                <div class="row" style="gap: 0.5rem">
+                  <input id="b-accent" type="color" formControlName="brandAccent" style="width: 44px; height: 38px; padding: 2px" />
+                  <input class="form-control mono" [value]="brandForm.controls.brandAccent.value" disabled />
+                </div>
+              </div>
+            </form>
+            @if (canManageRoles()) {
+              <div class="row" style="gap: 0.5rem; margin-bottom: 1rem">
+                <button appRipple type="button" class="btn btn-grad btn-sm" [disabled]="saving() || !brandChanged()" (click)="saveBranding()">
+                  <i class="fas fa-palette"></i> Guardar colores
+                </button>
+                <button type="button" class="btn btn-outline btn-sm" [disabled]="saving()" (click)="resetBrandDefaults()">
+                  Volver a los de D&amp;D
+                </button>
+              </div>
+            }
+
+            <div class="form-group">
+              <label>Registrado</label>
+              <input class="form-control" [value]="tenant()!.createdAt | date: 'dd/MM/yyyy HH:mm'" disabled />
+            </div>
+
+            <div class="alert alert-info">
+              <i class="fas fa-circle-info"></i>
+              <span>
+                Los colores pintan toda la consola de este proveedor (botones, degradados y acentos)
+                para todos sus usuarios. Razon social y slug no se editan: el slug viaja como
+                X-Tenant-Id en toda la plataforma.
+              </span>
+            </div>
+          </div>
+        </div>
+      }
+
+      @if (isSuperAdmin()) {
+        <div class="card" [style.margin-top]="tenant() ? '1rem' : null">
+          <div class="card-header">
+            <div>
+              <h3>Proveedores en la plataforma</h3>
+              <div class="sub">{{ tenants.value().length }} registrado(s) · solo Super Admin</div>
+            </div>
+            <button appRipple type="button" class="btn btn-outline btn-sm" (click)="openAddTenant()">
+              <i class="fas fa-plus"></i> Registrar ISP
+            </button>
+          </div>
+          <div class="table-wrap">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Proveedor</th>
+                  <th>Slug</th>
+                  <th>Plan</th>
+                  <th>Estado</th>
+                  <th>Modulos activos</th>
+                </tr>
+              </thead>
+              <tbody>
+                @for (row of tenants.value(); track row.id) {
+                  <tr>
+                    <td class="cell-main">
+                      {{ row.name }}
+                      @if (row.slug === tenant()?.slug) {
+                        <span class="badge badge-violet" style="margin-left: 0.4rem">Tu sesion</span>
+                      }
+                    </td>
+                    <td class="cell-mono">{{ row.slug }}</td>
+                    <td><app-status-badge [label]="planLabel(row.plan)" /></td>
+                    <td><app-status-badge [label]="statusLabel(row.status)" /></td>
+                    <td>
+                      <span class="badge badge-info">{{ enabledModules(row) }} activo(s)</span>
+                    </td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          </div>
+        </div>
+      }
+    }
+  }
+
+  @if (tab() === 'integraciones') {
+    <div class="mod-grid">
+      @for (integration of integrations(); track integration.name) {
+        <div class="mod-card" [class.on]="integration.ready === true">
+          <div class="top">
+            <div class="mod-ico" [style.color]="integration.color">
+              <i class="{{ integration.icon }}"></i>
+            </div>
+            @if (integration.ready === true) {
+              <span class="badge badge-success"><i class="fas fa-circle"></i> En uso</span>
+            } @else if (integration.ready === false) {
+              <span class="badge badge-warning">Sin configurar</span>
+            } @else {
+              <span class="badge badge-info">Depende del entorno</span>
+            }
+          </div>
+          <h4>{{ integration.name }}</h4>
+          <p>{{ integration.detail }}</p>
+        </div>
+      }
+    </div>
+
+    <div class="card" style="margin-top: 1rem">
+      <div class="card-header"><h3>Variables de entorno que exige el ecosistema</h3></div>
+      <div class="card-body">
+        <div class="kv">
+          <span class="mono">JWT_SECRET</span>
+          <b>Firma de los tokens; identico en dd_ms_auth y en el gateway</b>
+        </div>
+        <div class="kv">
+          <span class="mono">NETWORK_CRYPTO_SECRET</span>
+          <b>Cifra las credenciales de los routers MikroTik</b>
+        </div>
+        <div class="kv">
+          <span class="mono">ANTHROPIC_API_KEY</span>
+          <b>Sin ella, el chat de los agentes responde 502</b>
+        </div>
+        <div class="kv">
+          <span class="mono">WHATSAPP_TOKEN</span>
+          <b>Token de la Cloud API de Meta</b>
+        </div>
+        <div class="kv">
+          <span class="mono">WHATSAPP_PHONE_NUMBER_ID</span>
+          <b>Numero verificado que envia los mensajes</b>
+        </div>
+        <div class="kv">
+          <span class="mono">WHATSAPP_WEBHOOK_VERIFY_TOKEN</span>
+          <b>Lo valida Meta al registrar el webhook</b>
+        </div>
+        <p class="hint" style="margin-top: 0.9rem">
+          Se configuran en el archivo <span class="mono">.env</span> de la raiz del ecosistema, no
+          desde la consola: son secretos del despliegue.
+        </p>
+      </div>
+    </div>
+  }
+
+  @if (tab() === 'usuarios') {
+    <!-- los roles personalizados son de un proveedor; el Super Admin no tiene uno propio -->
+    @if (canManageRoles() && tenant()) {
+      <div class="card" style="margin-bottom: 1rem">
+        <div class="card-header">
+          <div>
+            <h3>Roles personalizados</h3>
+            <div class="sub">Qué páginas de la consola ve cada rol, además de su rol administrativo</div>
+          </div>
+          <button appRipple type="button" class="btn btn-outline btn-sm" (click)="openCreateRole()">
+            <i class="fas fa-plus"></i> Nuevo rol
+          </button>
+        </div>
+
+        <app-async-state
+          [loading]="customRolesLoading()"
+          [error]="customRolesError()"
+          [empty]="!customRolesLoading() && !customRolesError() && customRoles().length === 0"
+          emptyIcon="fas fa-user-shield"
+          emptyTitle="Sin roles personalizados"
+          emptyText="Crea uno para limitar la navegacion de un usuario a solo algunas paginas."
+          (retry)="tenant() ? loadRoles(tenant()!.id) : null"
+        />
+
+        @if (!customRolesLoading() && !customRolesError() && customRoles().length > 0) {
+          <div class="table-wrap">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Rol</th>
+                  <th>Paginas que ve</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                @for (role of customRoles(); track role.id) {
+                  <tr>
+                    <td>
+                      <div class="cell-main">{{ role.name }}</div>
+                      @if (role.description) {
+                        <div class="cell-sub">{{ role.description }}</div>
+                      }
+                    </td>
+                    <td>
+                      <div class="row-wrap">
+                        @for (key of role.permissions; track key) {
+                          <span class="badge badge-gray mono" style="font-size: 0.62rem">{{ key }}</span>
+                        }
+                        @if (role.permissions.length === 0) {
+                          <span class="cell-sub">Ninguna (el usuario no veria nada)</span>
+                        }
+                      </div>
+                    </td>
+                    <td class="actions">
+                      <button
+                        type="button"
+                        class="btn btn-ghost btn-icon"
+                        title="Editar rol"
+                        (click)="openEditRole(role)"
+                      >
+                        <i class="fas fa-pen"></i>
+                      </button>
+                      <button
+                        type="button"
+                        class="btn btn-ghost btn-icon"
+                        title="Eliminar rol"
+                        [disabled]="busyRoleId() === role.id"
+                        (click)="deleteRole(role)"
+                      >
+                        <i class="fas fa-trash"></i>
+                      </button>
+                    </td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          </div>
+        }
+      </div>
+    }
+
+    <div class="card">
+      <div class="card-header">
+        <div>
+          <h3>Usuarios de la consola</h3>
+          <div class="sub">{{ tenantUsers().length }} con acceso</div>
+        </div>
+        @if (canManageRoles()) {
+          <button appRipple type="button" class="btn btn-grad btn-sm" (click)="openAddUser()">
+            <i class="fas fa-user-plus"></i> Nuevo usuario
+          </button>
+        }
+      </div>
+
+      <app-async-state
+        [loading]="users.loading()"
+        [error]="users.error()"
+        [empty]="tenantUsers().length === 0"
+        emptyIcon="fas fa-users"
+        emptyTitle="Sin usuarios"
+        emptyText="Crea el primer usuario para este proveedor."
+        (retry)="users.reload()"
+      />
+
+      @if (tenantUsers().length > 0) {
+        <div class="table-wrap">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Usuario</th>
+                <th>Correo</th>
+                <th>Rol</th>
+                <th>Rol personalizado</th>
+                <th>Proveedor</th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (user of tenantUsers(); track user.id) {
+                <tr>
+                  <td>
+                    <span class="avatar-sm">{{ initials(user.fullName) }}</span>
+                    <span class="cell-main">{{ user.fullName }}</span>
+                    @if (user.id === auth.user()?.id) {
+                      <span class="badge badge-violet" style="margin-left: 0.4rem">Tu</span>
+                    }
+                  </td>
+                  <td>{{ user.email }}</td>
+                  <td><app-status-badge [label]="roleLabel(user.role)" /></td>
+                  <td>
+                    @if (customRoleName(user.customRoleId); as name) {
+                      <span class="badge badge-info">{{ name }}</span>
+                    } @else {
+                      <span class="cell-sub">—</span>
+                    }
+                  </td>
+                  <td class="cell-sub">
+                    {{ tenantName(user.tenantId) }}
+                  </td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+      }
+    </div>
+  }
+</div>
+
+@if (addingUser()) {
+  <app-modal title="Nuevo usuario" (close)="closeModals()">
+    <form [formGroup]="userForm" (ngSubmit)="saveUser()" id="user-form">
+      <div class="form-group">
+        <label for="u-name">Nombre completo</label>
+        <input id="u-name" class="form-control" formControlName="fullName" placeholder="Coordinador de cartera" />
+        @if (userForm.controls.fullName.touched && userForm.controls.fullName.invalid) {
+          <div class="field-error">El nombre es obligatorio.</div>
+        }
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label for="u-email">Correo</label>
+          <input id="u-email" class="form-control" type="email" formControlName="email" placeholder="cartera@ejemplo.co" />
+          @if (userForm.controls.email.touched && userForm.controls.email.invalid) {
+            <div class="field-error">Escribe un correo valido.</div>
+          }
+        </div>
+        <div class="form-group">
+          <label for="u-role">Rol</label>
+          <select id="u-role" class="form-control" formControlName="role">
+            @for (role of roleOptions(); track role.value) {
+              <option [value]="role.value">{{ role.text }}</option>
+            }
+          </select>
+        </div>
+      </div>
+
+      @if (isSuperAdmin() && userForm.controls.role.value !== 'SUPER_ADMIN') {
+        <div class="form-group">
+          <label for="u-tenant">Proveedor</label>
+          <select id="u-tenant" class="form-control" formControlName="tenantId">
+            <option value="">Elige el ISP…</option>
+            @for (row of tenants.value(); track row.id) {
+              <option [value]="row.id">{{ row.name }}</option>
+            }
+          </select>
+        </div>
+      }
+
+      @if (customRoles().length > 0) {
+        <div class="form-group">
+          <label for="u-custom-role">Rol personalizado (opcional)</label>
+          <select id="u-custom-role" class="form-control" formControlName="customRoleId">
+            <option value="">Ninguno — solo el rol de arriba</option>
+            @for (role of customRoles(); track role.id) {
+              <option [value]="role.id">{{ role.name }}</option>
+            }
+          </select>
+          <div class="hint">Afina que paginas ve en la consola, ademas de su rol administrativo.</div>
+        </div>
+      }
+
+      <div class="form-group">
+        <label for="u-pass">Contrasena inicial</label>
+        <input
+          id="u-pass"
+          class="form-control"
+          type="password"
+          autocomplete="new-password"
+          formControlName="password"
+        />
+        @if (userForm.controls.password.touched && userForm.controls.password.invalid) {
+          <div class="field-error">Minimo 8 caracteres.</div>
+        }
+        <div class="hint">
+          Se guarda con hash en dd_ms_auth. Pidele al usuario que la cambie al primer ingreso.
+        </div>
+      </div>
+
+      @if (tenant()) {
+        <p class="hint">El usuario queda asociado a <b>{{ tenant()!.name }}</b>.</p>
+      }
+    </form>
+
+    <ng-container modalFooter>
+      <button type="button" class="btn btn-outline" (click)="closeModals()">Cancelar</button>
+      <button appRipple type="submit" form="user-form" class="btn btn-grad" [disabled]="saving()">
+        @if (saving()) {
+          <i class="fas fa-circle-notch" style="animation: spinSlow 1s linear infinite"></i>
+          Creando…
+        } @else {
+          <i class="fas fa-check"></i> Crear usuario
+        }
+      </button>
+    </ng-container>
+  </app-modal>
+}
+
+@if (addingTenant()) {
+  <app-modal title="Registrar nuevo ISP" (close)="closeModals()">
+    <form [formGroup]="tenantForm" (ngSubmit)="saveTenant()" id="tenant-form">
+      <div class="form-group">
+        <label for="tn-name">Razon social</label>
+        <input
+          id="tn-name"
+          class="form-control"
+          formControlName="name"
+          placeholder="NetSur Fibra SAS"
+          (input)="onTenantNameInput($any($event.target).value)"
+        />
+        @if (tenantForm.controls.name.touched && tenantForm.controls.name.invalid) {
+          <div class="field-error">El nombre es obligatorio.</div>
+        }
+      </div>
+
+      <div class="form-group">
+        <label for="tn-slug">Identificador (slug)</label>
+        <input id="tn-slug" class="form-control mono" formControlName="slug" placeholder="netsur-fibra" />
+        @if (tenantForm.controls.slug.touched && tenantForm.controls.slug.invalid) {
+          <div class="field-error">
+            Solo minusculas, numeros y guiones, entre 3 y 60 caracteres.
+          </div>
+        }
+        <div class="hint">
+          Es el valor que viaja como <span class="mono">X-Tenant-Id</span> en toda la plataforma y no
+          se puede cambiar despues.
+        </div>
+      </div>
+
+      <div class="alert alert-warning">
+        <i class="fas fa-circle-info"></i>
+        <span>
+          El proveedor nace con CRM, facturacion y contratos activos. Despues de crearlo, activa el
+          resto en Modulos y crea su primer usuario administrador.
+        </span>
+      </div>
+    </form>
+
+    <ng-container modalFooter>
+      <button type="button" class="btn btn-outline" (click)="closeModals()">Cancelar</button>
+      <button appRipple type="submit" form="tenant-form" class="btn btn-grad" [disabled]="saving()">
+        @if (saving()) {
+          <i class="fas fa-circle-notch" style="animation: spinSlow 1s linear infinite"></i>
+          Registrando…
+        } @else {
+          <i class="fas fa-building"></i> Registrar ISP
+        }
+      </button>
+    </ng-container>
+  </app-modal>
+}
+
+@if (editingRole()) {
+  <app-modal
+    [title]="editingRole() === 'new' ? 'Nuevo rol personalizado' : 'Editar rol'"
+    wide
+    (close)="closeRoleModal()"
+  >
+    <form [formGroup]="roleForm" (ngSubmit)="saveRole()" id="role-form">
+      <div class="form-row">
+        <div class="form-group">
+          <label for="r-name">Nombre del rol</label>
+          <input id="r-name" class="form-control" formControlName="name" placeholder="Cartera Sur" />
+          @if (roleForm.controls.name.touched && roleForm.controls.name.invalid) {
+            <div class="field-error">El nombre es obligatorio.</div>
+          }
+        </div>
+        <div class="form-group">
+          <label for="r-desc">Descripcion (opcional)</label>
+          <input id="r-desc" class="form-control" formControlName="description" placeholder="Solo ve pagos y facturacion" />
+        </div>
+      </div>
+
+      <label style="font-size: 0.8rem; font-weight: 600; color: var(--text-secondary); display: block; margin-bottom: 0.5rem">
+        Paginas que puede ver
+      </label>
+      <p class="hint" style="margin-top: 0; margin-bottom: 0.8rem">
+        Solo oculta los enlaces del menu lateral: ninguna API valida esto todavia, asi que no
+        reemplaza el control de modulos ni un permiso real de backend.
+      </p>
+
+      <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 1rem">
+        @for (section of navCatalog; track section.label) {
+          <div>
+            <div class="cell-sub" style="font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 0.4rem">
+              {{ section.label }}
+            </div>
+            @for (item of section.items; track item.path) {
+              <label class="row" style="padding: 0.2rem 0; cursor: pointer; font-size: 0.85rem">
+                <input
+                  type="checkbox"
+                  [checked]="isPermissionChecked(item.path)"
+                  (change)="togglePermission(item.path, $any($event.target).checked)"
+                />
+                <i class="{{ item.icon }}" style="width: 18px; text-align: center; color: var(--text-muted)"></i>
+                {{ item.label }}
+              </label>
+            }
+          </div>
+        }
+      </div>
+    </form>
+
+    <ng-container modalFooter>
+      <button type="button" class="btn btn-outline" (click)="closeRoleModal()">Cancelar</button>
+      <button appRipple type="submit" form="role-form" class="btn btn-grad" [disabled]="saving()">
+        @if (saving()) {
+          <i class="fas fa-circle-notch" style="animation: spinSlow 1s linear infinite"></i>
+          Guardando…
+        } @else {
+          <i class="fas fa-check"></i> {{ editingRole() === 'new' ? 'Crear rol' : 'Guardar cambios' }}
+        }
+      </button>
+    </ng-container>
+  </app-modal>
+}

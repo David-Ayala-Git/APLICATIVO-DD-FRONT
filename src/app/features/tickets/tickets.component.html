@@ -1,0 +1,263 @@
+<div class="page">
+  <app-page-head
+    title="Mesa de ayuda"
+    subtitle="Tickets de soporte con SLA, prioridad y asignacion a la cuadrilla"
+  >
+    <button
+      appRipple
+      type="button"
+      class="btn btn-outline btn-sm"
+      [disabled]="tickets.loading()"
+      (click)="tickets.reload()"
+    >
+      <i class="fas fa-rotate"></i> Actualizar
+    </button>
+    <button appRipple type="button" class="btn btn-grad btn-sm" (click)="openCreate()">
+      <i class="fas fa-plus"></i> Nuevo ticket
+    </button>
+  </app-page-head>
+
+  <div class="stats-grid">
+    <app-stat-card
+      label="Urgentes sin resolver"
+      [value]="stats().urgent"
+      icon="fas fa-fire"
+      tone="red"
+      [note]="stats().breached > 0 ? stats().breached + ' con SLA vencido' : ''"
+      trend="down"
+    />
+    <app-stat-card label="Abiertos" [value]="stats().open" icon="fas fa-inbox" tone="orange" />
+    <app-stat-card
+      label="En proceso"
+      [value]="stats().inProgress"
+      icon="fas fa-spinner"
+      tone="cyan"
+    />
+    <app-stat-card
+      label="Resueltos"
+      [value]="stats().resolved"
+      icon="fas fa-check-double"
+      tone="green"
+      trend="up"
+    />
+  </div>
+
+  <div class="card">
+    <div class="card-header">
+      <div class="topbar-search" style="width: 260px">
+        <i class="fas fa-search"></i>
+        <input
+          placeholder="Motivo, cliente o tecnico…"
+          [value]="search()"
+          (input)="search.set($any($event.target).value)"
+          aria-label="Buscar ticket"
+        />
+      </div>
+      <div class="row-wrap">
+        @for (opt of statusOptions; track opt.value) {
+          <button
+            type="button"
+            class="badge"
+            [class.badge-violet]="statusFilter() === opt.value"
+            [class.badge-gray]="statusFilter() !== opt.value"
+            style="cursor: pointer; border: none; font-family: inherit"
+            (click)="statusFilter.set(opt.value)"
+          >
+            {{ opt.text }}
+          </button>
+        }
+      </div>
+    </div>
+
+    <app-async-state
+      [loading]="tickets.loading()"
+      [error]="tickets.error()"
+      [empty]="filtered().length === 0"
+      emptyIcon="fas fa-circle-check"
+      emptyTitle="Nada en la cola"
+      emptyText="No hay tickets que coincidan con el filtro actual."
+      (retry)="tickets.reload()"
+    />
+
+    @if (!tickets.loading() && !tickets.error() && filtered().length > 0) {
+      <div class="table-wrap">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Motivo</th>
+              <th>Cliente</th>
+              <th>Asignado</th>
+              <th>SLA</th>
+              <th>Prioridad</th>
+              <th>Estado</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (ticket of filtered(); track ticket.id) {
+              <tr>
+                <td>
+                  <div class="cell-main">{{ ticket.reason }}</div>
+                  <div class="cell-sub">
+                    Creado {{ ticket.createdAt | date: 'dd/MM/yyyy HH:mm' }}
+                  </div>
+                </td>
+                <td>{{ clientName(ticket.clientId) }}</td>
+                <td>
+                  @if (ticket.assignedTo) {
+                    <span class="avatar-sm" style="background: var(--accent-light); color: var(--accent-dark)">
+                      {{ initials(technicianName(ticket.assignedTo)) }}
+                    </span>
+                    {{ technicianName(ticket.assignedTo) }}
+                  } @else {
+                    <span class="badge badge-gray">Sin asignar</span>
+                  }
+                </td>
+                <td>
+                  <span class="badge {{ sla(ticket.slaDueAt).badge }}">
+                    {{ sla(ticket.slaDueAt).text }}
+                  </span>
+                </td>
+                <td><app-status-badge [label]="priorityLabel(ticket.priority)" /></td>
+                <td><span class="badge {{ statusLabel(ticket.status).badge }}">{{ statusLabel(ticket.status).text }}</span></td>
+                <td class="actions">
+                  @if (ticket.status === 'OPEN' || ticket.status === 'IN_PROGRESS') {
+                    <button
+                      type="button"
+                      class="btn btn-ghost btn-icon"
+                      title="Asignar tecnico"
+                      (click)="openAssign(ticket)"
+                    >
+                      <i class="fas fa-user-gear"></i>
+                    </button>
+                    <button
+                      type="button"
+                      class="btn btn-ghost btn-icon"
+                      title="Marcar resuelto"
+                      [disabled]="busyId() === ticket.id"
+                      (click)="resolve(ticket)"
+                    >
+                      <i class="fas fa-check"></i>
+                    </button>
+                  } @else if (ticket.status === 'RESOLVED') {
+                    <button
+                      type="button"
+                      class="btn btn-outline btn-sm"
+                      [disabled]="busyId() === ticket.id"
+                      (click)="closeTicket(ticket)"
+                    >
+                      Cerrar
+                    </button>
+                  }
+                </td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+    }
+  </div>
+</div>
+
+@if (creating()) {
+  <app-modal title="Nuevo ticket" (close)="closeModals()">
+    <form [formGroup]="form" (ngSubmit)="save()" id="ticket-form">
+      <div class="form-group">
+        <label for="t-client">Cliente</label>
+        <select id="t-client" class="form-control" formControlName="clientId">
+          @for (client of clients.value(); track client.id) {
+            <option [value]="client.id">{{ client.fullName }} — {{ client.document }}</option>
+          }
+        </select>
+        @if (clients.value().length === 0) {
+          <div class="field-error">No hay clientes cargados. Crealos primero en CRM.</div>
+        }
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label for="t-reason">Motivo</label>
+          <select id="t-reason" class="form-control" formControlName="reason">
+            @for (reason of reasons; track reason) {
+              <option [value]="reason">{{ reason }}</option>
+            }
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="t-priority">Prioridad</label>
+          <select id="t-priority" class="form-control" formControlName="priority">
+            @for (priority of priorities; track priority.value) {
+              <option [value]="priority.value">{{ priority.text }}</option>
+            }
+          </select>
+        </div>
+      </div>
+
+      <p class="hint">
+        El microservicio calcula el vencimiento del SLA segun la prioridad elegida.
+      </p>
+    </form>
+
+    <ng-container modalFooter>
+      <button type="button" class="btn btn-outline" (click)="closeModals()">Cancelar</button>
+      <button
+        appRipple
+        type="submit"
+        form="ticket-form"
+        class="btn btn-grad"
+        [disabled]="saving() || clients.value().length === 0"
+      >
+        @if (saving()) {
+          <i class="fas fa-circle-notch" style="animation: spinSlow 1s linear infinite"></i>
+          Creando…
+        } @else {
+          <i class="fas fa-check"></i> Crear ticket
+        }
+      </button>
+    </ng-container>
+  </app-modal>
+}
+
+@if (assigningTo()) {
+  <app-modal title="Asignar ticket" (close)="closeModals()">
+    <form [formGroup]="assignForm" (ngSubmit)="assign()" id="assign-ticket-form">
+      <div class="form-group">
+        <label>Ticket</label>
+        <input class="form-control" [value]="assigningTo()!.reason" disabled />
+      </div>
+      <div class="form-group">
+        <label for="t-tech">Tecnico</label>
+        <select id="t-tech" class="form-control" formControlName="technicianId">
+          @for (tech of technicians.value(); track tech.id) {
+            <option [value]="tech.id">
+              {{ tech.fullName }} — {{ tech.status === 'AVAILABLE' ? 'disponible' : tech.status === 'BUSY' ? 'en ruta' : 'descanso' }}
+            </option>
+          }
+        </select>
+        @if (technicians.value().length === 0) {
+          <div class="field-error">
+            No hay tecnicos registrados. Agregalos en Gestion de tecnicos.
+          </div>
+        }
+      </div>
+    </form>
+
+    <ng-container modalFooter>
+      <button type="button" class="btn btn-outline" (click)="closeModals()">Cancelar</button>
+      <button
+        appRipple
+        type="submit"
+        form="assign-ticket-form"
+        class="btn btn-accent"
+        [disabled]="saving() || technicians.value().length === 0"
+      >
+        @if (saving()) {
+          <i class="fas fa-circle-notch" style="animation: spinSlow 1s linear infinite"></i>
+          Asignando…
+        } @else {
+          <i class="fas fa-check"></i> Asignar
+        }
+      </button>
+    </ng-container>
+  </app-modal>
+}
