@@ -1,9 +1,11 @@
 import { DatePipe } from '@angular/common';
 import { Component, computed, effect, inject, signal } from '@angular/core';
+import { toSignal } from '@angular/core/rxjs-interop';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { catchError, of } from 'rxjs';
 
 import { AuthApi, CommsApi, NetworkApi } from '../../core/api';
+import { getRolePermissionSummary } from '../../core/auth/access';
 import { AuthService } from '../../core/auth/auth.service';
 import {
   AiAgent,
@@ -127,6 +129,37 @@ export class SettingsComponent {
     customRoleId: [''],
     /** Solo lo elige el Super Admin; los demas crean dentro de su proveedor. */
     tenantId: [''],
+  });
+
+  protected readonly showRoleGuide = signal(true);
+
+  private readonly selectedUserRole = toSignal(this.userForm.controls.role.valueChanges, {
+    initialValue: this.userForm.controls.role.value,
+  });
+
+  private readonly selectedUserTenantId = toSignal(this.userForm.controls.tenantId.valueChanges, {
+    initialValue: this.userForm.controls.tenantId.value,
+  });
+
+  /** Permisos de cada rol base visibles para el administrador actual. */
+  protected readonly baseRoleSummaries = computed(() => {
+    const activeTenant = this.tenant();
+    return this.roleOptions().map((opt) => ({
+      ...opt,
+      info: getRolePermissionSummary(opt.value, opt.value === 'SUPER_ADMIN' ? null : activeTenant),
+    }));
+  });
+
+  /** Vista previa en vivo del rol seleccionado en el modal "Nuevo usuario". */
+  protected readonly selectedRoleSummary = computed(() => {
+    const role = this.selectedUserRole();
+    const targetTenant =
+      role === 'SUPER_ADMIN'
+        ? null
+        : this.isSuperAdmin()
+          ? (this.tenants.value().find((t) => t.id === this.selectedUserTenantId()) ?? null)
+          : this.tenant();
+    return getRolePermissionSummary(role, targetTenant);
   });
 
   /** Colores de marca del proveedor de la sesion (los aplica TenantService a toda la consola). */

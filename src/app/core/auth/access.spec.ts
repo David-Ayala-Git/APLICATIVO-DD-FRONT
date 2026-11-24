@@ -1,5 +1,5 @@
 import { Tenant } from '../models';
-import { canAccessPage } from './access';
+import { canAccessPage, getRolePermissionSummary } from './access';
 
 function tenantWith(...enabled: string[]): Tenant {
   return {
@@ -50,5 +50,19 @@ describe('canAccessPage', () => {
 
   it('sin rol no se abre nada restringido', () => {
     expect(canAccessPage('crm', null, full)).toBe(false);
+  });
+
+  it('resume los modulos y permisos de cada rol base para los administradores', () => {
+    const superAdmin = getRolePermissionSummary('SUPER_ADMIN', null);
+    expect(superAdmin.pages.map((p) => p.path)).toEqual(['dashboard', 'modules', 'settings']);
+
+    const tech = getRolePermissionSummary('TECNICO', full);
+    expect(tech.pages.some((p) => p.path === 'gpon' && p.mode === 'full')).toBe(true);
+    expect(tech.pages.some((p) => p.path === 'crm' && p.mode === 'read')).toBe(true);
+    expect(tech.pages.some((p) => p.path === 'billing')).toBe(false);
+
+    const cartera = getRolePermissionSummary('CARTERA', tenantWith('crm', 'billing'));
+    expect(cartera.pages.find((p) => p.path === 'billing')?.moduleEnabled).toBe(true);
+    expect(cartera.pages.find((p) => p.path === 'reports')?.moduleEnabled).toBe(false);
   });
 });

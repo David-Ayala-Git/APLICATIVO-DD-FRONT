@@ -212,6 +212,83 @@
   }
 
   @if (tab() === 'usuarios') {
+    <!-- Matriz de permisos de los roles base: visible solo para administradores -->
+    @if (canManageRoles()) {
+      <div class="card" style="margin-bottom: 1rem">
+        <div class="card-header">
+          <div>
+            <h3>Permisos de los roles base</h3>
+            <div class="sub">
+              Modulos y nivel de acceso que otorga cada rol sugerido por la plataforma
+              @if (tenant()) {
+                · los modulos apagados en <b>{{ tenant()!.name }}</b> se muestran atenuados
+              }
+            </div>
+          </div>
+          <button
+            type="button"
+            class="btn btn-outline btn-sm"
+            (click)="showRoleGuide.set(!showRoleGuide())"
+          >
+            <i
+              class="fas"
+              [class.fa-chevron-up]="showRoleGuide()"
+              [class.fa-chevron-down]="!showRoleGuide()"
+            ></i>
+            {{ showRoleGuide() ? 'Ocultar guia' : 'Ver guia' }}
+          </button>
+        </div>
+
+        @if (showRoleGuide()) {
+          <div class="card-body">
+            <div class="role-guide-grid">
+              @for (item of baseRoleSummaries(); track item.value) {
+                <div class="role-guide-card">
+                  <div class="role-guide-head">
+                    <app-status-badge [label]="roleLabel(item.value)" />
+                    <span class="cell-sub">{{ item.info.pages.length }} paginas</span>
+                  </div>
+                  <p class="role-guide-summary">{{ item.info.summary }}</p>
+
+                  <div class="role-perm-list">
+                    @for (page of item.info.pages; track page.path) {
+                      <span
+                        class="role-perm-pill"
+                        [class.is-read]="page.mode === 'read'"
+                        [class.is-partial]="page.mode === 'partial'"
+                        [class.is-disabled]="!page.moduleEnabled"
+                        [title]="
+                          page.label +
+                          ' · ' +
+                          page.modeLabel +
+                          (page.moduleEnabled ? '' : ' (modulo apagado en este ISP)')
+                        "
+                      >
+                        <i class="{{ page.icon }}"></i>
+                        <span>{{ page.label }}</span>
+                        @if (page.mode !== 'full') {
+                          <small>{{ page.mode === 'read' ? 'lectura' : page.modeLabel }}</small>
+                        }
+                      </span>
+                    }
+                  </div>
+
+                  <div class="role-guide-notes">
+                    <div>
+                      <b class="text-success">Puede gestionar:</b> {{ item.info.canWrite }}
+                    </div>
+                    <div>
+                      <b class="text-secondary">Limites:</b> {{ item.info.restrictions }}
+                    </div>
+                  </div>
+                </div>
+              }
+            </div>
+          </div>
+        }
+      </div>
+    }
+
     <!-- los roles personalizados son de un proveedor; el Super Admin no tiene uno propio -->
     @if (canManageRoles() && tenant()) {
       <div class="card" style="margin-bottom: 1rem">
@@ -385,6 +462,40 @@
               <option [value]="role.value">{{ role.text }}</option>
             }
           </select>
+        </div>
+      </div>
+
+      <div class="role-preview">
+        <div class="role-preview-head">
+          <app-status-badge [label]="roleLabel(selectedRoleSummary().role)" />
+          <span class="cell-sub">{{ selectedRoleSummary().pages.length }} paginas incluidas</span>
+        </div>
+        <p class="role-preview-text">{{ selectedRoleSummary().summary }}</p>
+        <div class="role-perm-list">
+          @for (page of selectedRoleSummary().pages; track page.path) {
+            <span
+              class="role-perm-pill"
+              [class.is-read]="page.mode === 'read'"
+              [class.is-partial]="page.mode === 'partial'"
+              [class.is-disabled]="!page.moduleEnabled"
+              [title]="
+                page.label +
+                ' · ' +
+                page.modeLabel +
+                (page.moduleEnabled ? '' : ' (modulo apagado en este ISP)')
+              "
+            >
+              <i class="{{ page.icon }}"></i>
+              <span>{{ page.label }}</span>
+              @if (page.mode !== 'full') {
+                <small>{{ page.mode === 'read' ? 'lectura' : page.modeLabel }}</small>
+              }
+            </span>
+          }
+        </div>
+        <div class="role-guide-notes" style="margin-top: 0.6rem">
+          <div><b class="text-success">Acciones:</b> {{ selectedRoleSummary().canWrite }}</div>
+          <div><b class="text-secondary">Limites:</b> {{ selectedRoleSummary().restrictions }}</div>
         </div>
       </div>
 
