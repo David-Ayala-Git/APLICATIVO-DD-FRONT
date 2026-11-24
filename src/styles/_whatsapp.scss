@@ -2,7 +2,10 @@
 .wa-wrap {
   display: grid;
   grid-template-columns: 300px 1fr;
-  height: 560px;
+  height: clamp(460px, 68dvh, 620px);
+}
+.wa-back-btn {
+  display: none;
 }
 .wa-list {
   border-right: 1px solid var(--border);
@@ -137,8 +140,46 @@
 @media (max-width: 1024px) {
   .wa-wrap {
     grid-template-columns: 1fr;
+    height: auto;
+    min-height: 460px;
   }
   .wa-list {
+    border-right: none;
+    max-height: 64dvh;
+  }
+  .wa-thread {
     display: none;
+  }
+  .wa-wrap.thread-open .wa-list {
+    display: none;
+  }
+  .wa-wrap.thread-open .wa-thread {
+    display: flex;
+    min-height: 460px;
+    max-height: 70dvh;
+  }
+  .wa-back-btn {
+    display: inline-flex;
+  }
+}
+
+@media (max-width: 640px) {
+  .wa-msgs {
+    padding: 0.85rem;
+  }
+  .bubble,
+  .ai-bubble {
+    max-width: 88%;
+  }
+  .wa-input {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .wa-input .btn {
+    width: 100%;
+    justify-content: center;
+  }
+  .ai-chat {
+    height: clamp(320px, 54dvh, 420px);
   }
 }

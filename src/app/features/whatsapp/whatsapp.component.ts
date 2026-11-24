@@ -52,6 +52,7 @@ export class WhatsappComponent {
 
   protected readonly search = signal('');
   protected readonly selectedPhone = signal<string | null>(null);
+  protected readonly mobileThreadOpen = signal(false);
   protected readonly composing = signal(false);
   protected readonly saving = signal(false);
 
@@ -120,6 +121,11 @@ export class WhatsappComponent {
 
   protected select(phone: string): void {
     this.selectedPhone.set(phone);
+    this.mobileThreadOpen.set(true);
+  }
+
+  protected showConversationList(): void {
+    this.mobileThreadOpen.set(false);
   }
 
   protected openCompose(phone?: string): void {

@@ -1,3 +1,7 @@
+@if (mobileOpen()) {
+  <div class="sidebar-backdrop" (click)="closeMobileSidebar()" aria-hidden="true"></div>
+}
+
 <aside class="sidebar" [class.collapsed]="collapsed()" [class.mobile-open]="mobileOpen()">
   <div class="sidebar-brand">
     <div class="logo-badge">D&amp;D</div>
@@ -5,6 +9,14 @@
       <div class="bt">{{ tenant()?.name ?? 'D&D Conexiones' }}</div>
       <div class="bs">ISP Platform</div>
     </div>
+    <button
+      type="button"
+      class="sidebar-close"
+      (click)="closeMobileSidebar()"
+      aria-label="Cerrar menu"
+    >
+      <i class="fas fa-times"></i>
+    </button>
   </div>
 
   <!-- Identidad del proveedor activo. No es un selector: el tenant viene
@@ -53,11 +65,17 @@
 
 <main class="main-content" [class.expanded]="collapsed()">
   <div class="topbar" [class.scrolled]="scrolled()">
-    <button type="button" class="burger" (click)="toggleSidebar()" aria-label="Alternar menu">
+    <button
+      type="button"
+      class="burger"
+      (click)="toggleSidebar()"
+      [attr.aria-expanded]="mobileOpen()"
+      aria-label="Alternar menu"
+    >
       <i class="fas fa-bars"></i>
     </button>
 
-    <div>
+    <div class="topbar-heading">
       <div class="topbar-title">{{ title() }}</div>
       <div class="topbar-sub">{{ subtitle() }}</div>
     </div>

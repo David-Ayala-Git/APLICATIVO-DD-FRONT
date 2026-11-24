@@ -35,7 +35,7 @@
         </p>
       </div>
     } @else {
-      <div class="wa-wrap">
+      <div class="wa-wrap" [class.thread-open]="mobileThreadOpen()">
         <div class="wa-list">
           <div style="padding: 0.7rem 0.8rem; border-bottom: 1px solid var(--border)">
             <div class="topbar-search" style="width: 100%">
@@ -80,6 +80,14 @@
         <div class="wa-thread">
           @if (active()) {
             <div class="wa-thread-head">
+              <button
+                type="button"
+                class="icon-btn wa-back-btn"
+                aria-label="Volver a conversaciones"
+                (click)="showConversationList()"
+              >
+                <i class="fas fa-arrow-left"></i>
+              </button>
               <span class="avatar-sm" style="background: var(--success-light); color: var(--success)">
                 {{ initials(active()!.clientName) }}
               </span>

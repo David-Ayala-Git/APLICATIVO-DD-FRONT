@@ -6,7 +6,7 @@
     @if (isSuperAdmin() && platformTenants.value().length > 0) {
       <select
         class="form-control"
-        style="align-self: center; width: auto; min-width: 220px"
+        style="align-self: center; width: min(260px, 100%); min-width: 0; flex: 1 1 200px"
         aria-label="Proveedor"
         [value]="tenant()?.id ?? ''"
         (change)="selectedTenantId.set($any($event.target).value)"

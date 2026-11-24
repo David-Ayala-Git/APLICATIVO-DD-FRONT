@@ -18,7 +18,13 @@ body {
   background-attachment: fixed;
   color: var(--text-primary);
   min-height: 100vh;
+  min-height: 100dvh;
+  overflow-x: clip;
   -webkit-font-smoothing: antialiased;
+}
+
+body.sidebar-open {
+  overflow: hidden;
 }
 
 app-root {

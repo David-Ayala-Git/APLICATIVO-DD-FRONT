@@ -4,6 +4,7 @@ import {
   HostListener,
   OnInit,
   computed,
+  effect,
   inject,
   signal,
 } from '@angular/core';
@@ -82,6 +83,17 @@ export class ShellComponent implements OnInit {
     return ((parts[0]?.[0] ?? 'D') + (parts[1]?.[0] ?? parts[0]?.[1] ?? 'D')).toUpperCase();
   });
 
+  private readonly mobileBreakpoint = 1024;
+
+  constructor() {
+    effect(() => {
+      document.body.classList.toggle('sidebar-open', this.mobileOpen());
+    });
+    this.destroyRef.onDestroy(() => {
+      document.body.classList.remove('sidebar-open');
+    });
+  }
+
   ngOnInit(): void {
     this.syncHeader();
     this.pulse.refresh();
@@ -105,10 +117,28 @@ export class ShellComponent implements OnInit {
   }
 
   protected toggleSidebar(): void {
-    if (window.innerWidth <= 820) {
+    if (window.innerWidth <= this.mobileBreakpoint) {
       this.mobileOpen.update((v) => !v);
     } else {
       this.collapsed.update((v) => !v);
+    }
+  }
+
+  protected closeMobileSidebar(): void {
+    this.mobileOpen.set(false);
+  }
+
+  @HostListener('window:resize')
+  protected onResize(): void {
+    if (window.innerWidth > this.mobileBreakpoint && this.mobileOpen()) {
+      this.mobileOpen.set(false);
+    }
+  }
+
+  @HostListener('document:keydown.escape')
+  protected onEscape(): void {
+    if (this.mobileOpen()) {
+      this.mobileOpen.set(false);
     }
   }
 
