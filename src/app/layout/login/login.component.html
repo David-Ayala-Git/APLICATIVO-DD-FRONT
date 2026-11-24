@@ -57,7 +57,7 @@
 
       <div class="form-group">
         <label for="password">Contrasena</label>
-        <div style="position: relative">
+        <div class="auth-password-wrap">
           <input
             id="password"
             class="form-control"
@@ -65,13 +65,11 @@
             autocomplete="current-password"
             placeholder="••••••••"
             formControlName="password"
-            style="padding-right: 2.8rem"
             [attr.aria-invalid]="form.controls.password.touched && form.controls.password.invalid"
           />
           <button
             type="button"
-            class="icon-btn"
-            style="position: absolute; right: 2px; top: 1px"
+            class="icon-btn auth-password-toggle"
             [attr.aria-label]="showPassword() ? 'Ocultar contrasena' : 'Mostrar contrasena'"
             (click)="togglePassword()"
           >
