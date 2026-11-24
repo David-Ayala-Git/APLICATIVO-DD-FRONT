@@ -2,6 +2,7 @@ import { Injectable, Signal, computed, effect, inject, signal } from '@angular/c
 import { Observable, catchError, map, of } from 'rxjs';
 
 import { AuthApi } from '../api';
+import { matchesBaseRoleName } from '../auth/access';
 import { AuthService } from '../auth/auth.service';
 import { CustomRole, Tenant } from '../models';
 import { applyBrandTheme } from './brand-theme';
@@ -106,31 +107,33 @@ export class TenantService {
    * esto. Esto solo oculta enlaces del menu - ningun backend lo valida todavia.
    */
   readonly effectivePermissions = computed<string[] | null>(() => {
-    const customRoleId = this.auth.user()?.customRoleId;
-    if (!customRoleId) {
+    const user = this.auth.user();
+    if (!user || user.role === 'SUPER_ADMIN') {
       return null;
     }
-    const role = this.customRolesSignal().find((r) => r.id === customRoleId);
-    if (!role) {
+    const roles = this.customRolesSignal();
+    const matched = user.customRoleId
+      ? roles.find((r) => r.id === user.customRoleId)
+      : roles.find((r) => matchesBaseRoleName(r.name, user.role));
+
+    if (!matched) {
       return null;
     }
     // Un rol deshabilitado restringe el acceso a las paginas adicionales hasta reactivarlo.
-    if (role.enabled === false) {
+    if (matched.enabled === false) {
       return [];
     }
-    return role.permissions;
+    return matched.permissions;
   });
 
   private refreshCustomRoles(tenant: Tenant | null): void {
-    const customRoleId = this.auth.user()?.customRoleId;
-    if (!tenant || !customRoleId) {
+    if (!tenant) {
       this.customRolesSignal.set([]);
       return;
     }
-    // El usuario con sesion puede no ser SUPER_ADMIN/ADMIN_ISP (quienes
-    // administran roles); igual necesita leer SU propio rol para que el
-    // sidebar sepa que mostrarle. El backend permite el GET a cualquier rol
-    // autenticado del tenant - solo create/update/delete estan restringidos.
+    // Se cargan siempre los roles del tenant: si el usuario tiene un customRoleId
+    // o el admin personalizo/deshabilito su rol base (Operador, Cartera, Tecnico,
+    // Admin del ISP), el sidebar y pageGuard reflejan esos permisos al instante.
     this.authApi
       .roles(tenant.id)
       .pipe(catchError(() => of([] as CustomRole[])))

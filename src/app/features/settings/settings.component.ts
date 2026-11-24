@@ -5,7 +5,11 @@ import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { catchError, of } from 'rxjs';
 
 import { AuthApi, CommsApi, NetworkApi } from '../../core/api';
-import { getRolePermissionSummary } from '../../core/auth/access';
+import {
+  baseRoleDisplayName,
+  getRolePermissionSummary,
+  matchesBaseRoleName,
+} from '../../core/auth/access';
 import { AuthService } from '../../core/auth/auth.service';
 import {
   AiAgent,
@@ -159,13 +163,42 @@ export class SettingsComponent {
     initialValue: this.userForm.controls.tenantId.value,
   });
 
-  /** Permisos de cada rol base visibles para el administrador actual. */
+  /**
+   * Permisos de cada rol base visibles para el administrador actual.
+   * Si el proveedor gestionado tiene una personalizacion guardada para ese rol
+   * (mismo nombre en custom_role), muestra esos permisos y estado en vivo.
+   */
   protected readonly baseRoleSummaries = computed(() => {
-    const activeTenant = this.tenant();
-    return this.roleOptions().map((opt) => ({
-      ...opt,
-      info: getRolePermissionSummary(opt.value, opt.value === 'SUPER_ADMIN' ? null : activeTenant),
-    }));
+    const targetTenant = this.managedRoleTenant();
+    const customList = this.customRoles();
+    return this.roleOptions().map((opt) => {
+      const info = getRolePermissionSummary(opt.value, opt.value === 'SUPER_ADMIN' ? null : targetTenant);
+      const override =
+        opt.value === 'SUPER_ADMIN'
+          ? null
+          : (customList.find((r) => matchesBaseRoleName(r.name, opt.value)) ?? null);
+      const effectivePages = override
+        ? override.permissions.map((path) => {
+            const meta = this.pageLabel(path);
+            const fromBase = info.pages.find((p) => p.path === path);
+            return {
+              path,
+              label: meta.label,
+              icon: meta.icon,
+              mode: fromBase?.mode ?? ('full' as const),
+              modeLabel: fromBase?.modeLabel ?? 'Permitido',
+              moduleEnabled: fromBase?.moduleEnabled ?? true,
+            };
+          })
+        : info.pages;
+      return {
+        ...opt,
+        info,
+        override,
+        effectivePages,
+        enabled: override ? override.enabled !== false : true,
+      };
+    });
   });
 
   /** Vista previa en vivo del rol seleccionado en el modal "Nuevo usuario". */
@@ -440,6 +473,78 @@ export class SettingsComponent {
     this.selectedPermissions.set(new Set(role.permissions));
     this.roleEnabled.set(role.enabled !== false);
     this.editingRole.set(role);
+  }
+
+  /**
+   * Abre el editor de permisos directamente desde una tarjeta de rol base
+   * (Admin del ISP, Operador, Cartera, Tecnico): si ya tiene configuracion
+   * guardada en el proveedor la edita; si no, precarga sus permisos actuales.
+   */
+  protected openEditBaseRole(role: Role): void {
+    const targetTenant = this.managedRoleTenant();
+    if (!this.canManageRoles() || !targetTenant || role === 'SUPER_ADMIN') {
+      return;
+    }
+    const existing = this.customRoles().find((r) => matchesBaseRoleName(r.name, role));
+    if (existing) {
+      this.openEditRole(existing);
+      return;
+    }
+    const summary = getRolePermissionSummary(role, targetTenant);
+    this.roleForm.reset({
+      name: baseRoleDisplayName(role),
+      description: summary.summary,
+    });
+    this.selectedPermissions.set(new Set(summary.pages.map((p) => p.path)));
+    this.roleEnabled.set(true);
+    this.editingRole.set('new');
+  }
+
+  /** Habilita o deshabilita un rol base para el proveedor gestionado en un solo clic. */
+  protected toggleBaseRoleStatus(role: Role, enabled: boolean): void {
+    const targetTenant = this.managedRoleTenant();
+    if (!this.canManageRoles() || !targetTenant || role === 'SUPER_ADMIN' || this.busyRoleId()) {
+      return;
+    }
+    const existing = this.customRoles().find((r) => matchesBaseRoleName(r.name, role));
+    if (existing) {
+      this.toggleRoleStatus(existing, enabled);
+      return;
+    }
+    const summary = getRolePermissionSummary(role, targetTenant);
+    this.busyRoleId.set(role);
+    this.api
+      .createRole(targetTenant.id, {
+        name: baseRoleDisplayName(role),
+        description: summary.summary,
+        permissions: summary.pages.map((p) => p.path),
+      })
+      .subscribe({
+        next: (created) => {
+          if (enabled) {
+            this.busyRoleId.set(null);
+            this.loadRoles(targetTenant.id);
+            return;
+          }
+          this.api.updateRoleStatus(targetTenant.id, created.id, false).subscribe({
+            next: () => {
+              this.busyRoleId.set(null);
+              this.toast.success(`Rol "${created.name}" deshabilitado para ${targetTenant.name}.`);
+              this.loadRoles(targetTenant.id);
+              this.tenantService.refresh();
+            },
+            error: (err: unknown) => {
+              this.busyRoleId.set(null);
+              this.toast.error(describeHttpError(err));
+              this.loadRoles(targetTenant.id);
+            },
+          });
+        },
+        error: (err: unknown) => {
+          this.busyRoleId.set(null);
+          this.toast.error(describeHttpError(err));
+        },
+      });
   }
 
   protected closeRoleModal(): void {

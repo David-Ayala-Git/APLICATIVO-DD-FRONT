@@ -936,6 +936,18 @@ tr:hover .avatar-sm,
   gap: 0.65rem;
   min-width: 0;
 }
+.role-guide-card.is-disabled {
+  opacity: 0.72;
+  border-style: dashed;
+}
+.role-guide-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  padding-top: 0.6rem;
+  border-top: 1px solid var(--border);
+}
 .role-guide-head,
 .role-preview-head {
   display: flex;

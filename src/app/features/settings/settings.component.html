@@ -212,46 +212,70 @@
   }
 
   @if (tab() === 'usuarios') {
-    <!-- Matriz de permisos de los roles base: visible solo para administradores -->
+    <!-- Matriz editable de permisos de los roles base: solo SUPER_ADMIN y ADMIN_ISP -->
     @if (canManageRoles()) {
       <div class="card" style="margin-bottom: 1rem">
         <div class="card-header">
           <div>
             <h3>Permisos de los roles base</h3>
             <div class="sub">
-              Modulos y nivel de acceso que otorga cada rol sugerido por la plataforma
-              @if (tenant()) {
-                · los modulos apagados en <b>{{ tenant()!.name }}</b> se muestran atenuados
+              Edita los modulos de cada rol sugerido o deshabilitalo para el proveedor seleccionado
+              @if (managedRoleTenant(); as mt) {
+                · gestionando <b>{{ mt.name }}</b>
               }
             </div>
           </div>
-          <button
-            type="button"
-            class="btn btn-outline btn-sm"
-            (click)="showRoleGuide.set(!showRoleGuide())"
-          >
-            <i
-              class="fas"
-              [class.fa-chevron-up]="showRoleGuide()"
-              [class.fa-chevron-down]="!showRoleGuide()"
-            ></i>
-            {{ showRoleGuide() ? 'Ocultar guia' : 'Ver guia' }}
-          </button>
+          <div class="row-wrap">
+            @if (isSuperAdmin() && tenants.value().length > 0) {
+              <select
+                class="form-control"
+                style="width: min(230px, 100%); padding: 0.4rem 2.3rem 0.4rem 0.7rem; font-size: 0.82rem"
+                aria-label="Proveedor para configurar roles"
+                [value]="managedRoleTenant()?.id ?? ''"
+                (change)="selectedRoleTenantId.set($any($event.target).value)"
+              >
+                @for (row of tenants.value(); track row.id) {
+                  <option [value]="row.id">{{ row.name }}</option>
+                }
+              </select>
+            }
+            <button
+              type="button"
+              class="btn btn-outline btn-sm"
+              (click)="showRoleGuide.set(!showRoleGuide())"
+            >
+              <i
+                class="fas"
+                [class.fa-chevron-up]="showRoleGuide()"
+                [class.fa-chevron-down]="!showRoleGuide()"
+              ></i>
+              {{ showRoleGuide() ? 'Ocultar' : 'Ver roles' }}
+            </button>
+          </div>
         </div>
 
         @if (showRoleGuide()) {
           <div class="card-body">
             <div class="role-guide-grid">
               @for (item of baseRoleSummaries(); track item.value) {
-                <div class="role-guide-card">
+                <div class="role-guide-card" [class.is-disabled]="!item.enabled">
                   <div class="role-guide-head">
-                    <app-status-badge [label]="roleLabel(item.value)" />
-                    <span class="cell-sub">{{ item.info.pages.length }} paginas</span>
+                    <div class="row" style="gap: 0.4rem">
+                      <app-status-badge [label]="roleLabel(item.value)" />
+                      @if (item.value === 'SUPER_ADMIN') {
+                        <span class="badge badge-gray">Protegido</span>
+                      } @else if (!item.enabled) {
+                        <span class="badge badge-warning">Deshabilitado</span>
+                      } @else if (item.override) {
+                        <span class="badge badge-info">Personalizado</span>
+                      }
+                    </div>
+                    <span class="cell-sub">{{ item.effectivePages.length }} paginas</span>
                   </div>
-                  <p class="role-guide-summary">{{ item.info.summary }}</p>
+                  <p class="role-guide-summary">{{ item.override?.description || item.info.summary }}</p>
 
                   <div class="role-perm-list">
-                    @for (page of item.info.pages; track page.path) {
+                    @for (page of item.effectivePages; track page.path) {
                       <span
                         class="role-perm-pill"
                         [class.is-read]="page.mode === 'read'"
@@ -271,6 +295,9 @@
                         }
                       </span>
                     }
+                    @if (item.effectivePages.length === 0) {
+                      <span class="cell-sub">Sin modulos asignados (solo Dashboard)</span>
+                    }
                   </div>
 
                   <div class="role-guide-notes">
@@ -281,6 +308,49 @@
                       <b class="text-secondary">Limites:</b> {{ item.info.restrictions }}
                     </div>
                   </div>
+
+                  @if (item.value !== 'SUPER_ADMIN' && managedRoleTenant()) {
+                    <div class="role-guide-actions">
+                      <button
+                        type="button"
+                        class="btn btn-outline btn-sm"
+                        (click)="openEditBaseRole(item.value)"
+                      >
+                        <i class="fas fa-pen"></i> Editar permisos
+                      </button>
+
+                      <div class="row" style="gap: 0.45rem; margin-left: auto">
+                        <label
+                          class="switch"
+                          style="transform: scale(0.85)"
+                          [title]="item.enabled ? 'Deshabilitar rol' : 'Habilitar rol'"
+                        >
+                          <input
+                            type="checkbox"
+                            [checked]="item.enabled"
+                            [disabled]="busyRoleId() === item.value || (item.override && busyRoleId() === item.override.id)"
+                            (change)="toggleBaseRoleStatus(item.value, $any($event.target).checked)"
+                          />
+                          <span class="slider"></span>
+                        </label>
+                        @if (item.override) {
+                          <button
+                            type="button"
+                            class="btn btn-ghost btn-icon text-danger"
+                            title="Eliminar personalizacion"
+                            [disabled]="busyRoleId() === item.override.id"
+                            (click)="deleteRole(item.override)"
+                          >
+                            <i class="fas fa-trash"></i>
+                          </button>
+                        }
+                      </div>
+                    </div>
+                  } @else if (item.value !== 'SUPER_ADMIN') {
+                    <div class="role-guide-actions">
+                      <span class="cell-sub">Registra un proveedor en Empresa para editar o deshabilitar este rol.</span>
+                    </div>
+                  }
                 </div>
               }
             </div>
@@ -404,20 +474,20 @@
                       <td class="actions">
                         <button
                           type="button"
-                          class="btn btn-ghost btn-icon"
+                          class="btn btn-outline btn-sm"
                           title="Editar permisos del rol"
                           (click)="openEditRole(role)"
                         >
-                          <i class="fas fa-pen"></i>
+                          <i class="fas fa-pen"></i> Editar
                         </button>
                         <button
                           type="button"
-                          class="btn btn-ghost btn-icon text-danger"
+                          class="btn btn-ghost btn-sm text-danger"
                           title="Eliminar rol"
                           [disabled]="busyRoleId() === role.id"
                           (click)="deleteRole(role)"
                         >
-                          <i class="fas fa-trash"></i>
+                          <i class="fas fa-trash"></i> Eliminar
                         </button>
                       </td>
                     </tr>

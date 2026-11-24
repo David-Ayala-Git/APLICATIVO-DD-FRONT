@@ -169,6 +169,42 @@ const ROLE_GUIDES: Record<Role, RoleGuide> = {
   },
 };
 
+export function baseRoleDisplayName(role: Role): string {
+  switch (role) {
+    case 'SUPER_ADMIN':
+      return 'Super Admin';
+    case 'ADMIN_ISP':
+      return 'Admin del ISP';
+    case 'OPERADOR':
+      return 'Operador';
+    case 'CARTERA':
+      return 'Cartera';
+    case 'TECNICO':
+      return 'Tecnico';
+  }
+}
+
+const BASE_ROLE_ALIASES: Record<Role, string[]> = {
+  SUPER_ADMIN: ['super admin', 'super_admin'],
+  ADMIN_ISP: ['admin del isp', 'admin isp', 'admin_isp'],
+  OPERADOR: ['operador'],
+  CARTERA: ['cartera'],
+  TECNICO: ['tecnico'],
+};
+
+function normalizeRoleKey(value: string): string {
+  return value
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+}
+
+/** Comprueba si un rol guardado en dd_auth.custom_role corresponde a uno de los roles base. */
+export function matchesBaseRoleName(name: string, role: Role): boolean {
+  return BASE_ROLE_ALIASES[role].includes(normalizeRoleKey(name));
+}
+
 export function getRolePermissionSummary(role: Role, tenant: Tenant | null): RolePermissionSummary {
   const guide = ROLE_GUIDES[role];
   const pages: RolePagePermission[] = [];
