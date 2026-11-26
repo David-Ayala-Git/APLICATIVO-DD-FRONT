@@ -1,7 +1,7 @@
 <div class="page">
   <app-page-head
     title="Cobertura y mapas"
-    subtitle="Mapa interactivo de nodos, cajas NAP, sitios de OLT y torres registradas en la red"
+    subtitle="Mapa interactivo de nodos, control de cajas NAP (1x8 / 1x16) y asignacion de puertos por cliente"
   >
     <button
       appRipple
@@ -34,7 +34,7 @@
                 <i class="fas fa-plus"></i> Crear nodo aqui
               </button>
             } @else {
-              Haz clic sobre el mapa para capturar coordenadas o selecciona un marcador
+              Las cajas NAP cambian de color segun disponibilidad: verde (disponible), amarillo (pocos puertos), rojo (llena)
             }
           </div>
         </div>
@@ -81,16 +81,6 @@
               [style.left.%]="point.left"
               [style.transform]="'translate(-50%, -50%)'"
               [style.text-align]="'center'"
-              [title]="
-                point.node.name +
-                ' · ' +
-                point.label.text +
-                ' (' +
-                point.node.latitude +
-                ', ' +
-                point.node.longitude +
-                ')'
-              "
             >
               <div
                 class="dot-ico"
@@ -118,23 +108,66 @@
       }
     </div>
 
-    <div class="card">
-      <div class="card-header"><h3>Por tipo de nodo</h3></div>
-      <div class="card-body">
-        @for (row of byType(); track row.value) {
+    <div style="display: flex; flex-direction: column; gap: 1rem">
+      <div class="card">
+        <div class="card-header">
+          <h3>Control de Cajas NAP</h3>
+          <span class="badge badge-info">{{ napSummary().usedPorts }}/{{ napSummary().totalPorts }} puertos</span>
+        </div>
+        <div class="card-body">
           <div class="list-row">
-            <div class="dot-ico" [style.background]="row.color + '1a'" [style.color]="row.color">
-              <i class="{{ row.icon }}"></i>
+            <div class="dot-ico" style="background: rgba(16, 185, 129, 0.14); color: #10b981">
+              <i class="fas fa-circle-check"></i>
             </div>
             <div class="flex-1">
-              <div class="cell-main">{{ row.label.text }}</div>
-              <div class="cell-sub">{{ row.active }} activos de {{ row.count }}</div>
+              <div class="cell-main">Puertos disponibles</div>
+              <div class="cell-sub">Capacidad saludable</div>
             </div>
-            <span class="badge {{ row.count > 0 ? 'badge-violet' : 'badge-gray' }}">
-              {{ row.count }}
-            </span>
+            <span class="badge badge-success">{{ napSummary().available }}</span>
           </div>
-        }
+
+          <div class="list-row">
+            <div class="dot-ico" style="background: rgba(245, 158, 11, 0.14); color: #f59e0b">
+              <i class="fas fa-triangle-exclamation"></i>
+            </div>
+            <div class="flex-1">
+              <div class="cell-main">Pocos puertos</div>
+              <div class="cell-sub">75% o mas ocupada</div>
+            </div>
+            <span class="badge badge-warning">{{ napSummary().low }}</span>
+          </div>
+
+          <div class="list-row">
+            <div class="dot-ico" style="background: rgba(239, 68, 68, 0.14); color: #ef4444">
+              <i class="fas fa-circle-xmark"></i>
+            </div>
+            <div class="flex-1">
+              <div class="cell-main">Cajas llenas</div>
+              <div class="cell-sub">Sin puertos libres</div>
+            </div>
+            <span class="badge badge-danger">{{ napSummary().full }}</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header"><h3>Por tipo de nodo</h3></div>
+        <div class="card-body">
+          @for (row of byType(); track row.value) {
+            <div class="list-row">
+              <div class="dot-ico" [style.background]="row.color + '1a'" [style.color]="row.color">
+                <i class="{{ row.icon }}"></i>
+              </div>
+              <div class="flex-1">
+                <div class="cell-main">{{ row.label.text }}</div>
+                <div class="cell-sub">{{ row.active }} activos de {{ row.count }}</div>
+              </div>
+              <span class="badge {{ row.count > 0 ? 'badge-violet' : 'badge-gray' }}">
+                {{ row.count }}
+              </span>
+            </div>
+          }
+        </div>
       </div>
     </div>
   </div>
@@ -144,7 +177,7 @@
       <div class="topbar-search">
         <i class="fas fa-search"></i>
         <input
-          placeholder="Buscar nodo por nombre, tipo o coordenadas…"
+          placeholder="Buscar nodo por nombre, tipo, 1x8/1x16 o coordenadas…"
           [value]="search()"
           (input)="search.set($any($event.target).value)"
           aria-label="Buscar nodo"
@@ -162,6 +195,18 @@
           <option value="ALL">Todos los tipos</option>
           @for (type of nodeTypes; track type.value) {
             <option [value]="type.value">{{ type.text }}</option>
+          }
+        </select>
+
+        <select
+          class="form-control"
+          style="width: auto; padding: 0.4rem 2.2rem 0.4rem 0.7rem; font-size: 0.8rem"
+          [value]="napFilter()"
+          (change)="napFilter.set($any($event.target).value)"
+          aria-label="Filtrar por ocupacion NAP"
+        >
+          @for (opt of napFilterOptions; track opt.value) {
+            <option [value]="opt.value">{{ opt.text }}</option>
           }
         </select>
 
@@ -197,6 +242,7 @@
             <tr>
               <th>Nodo</th>
               <th>Tipo</th>
+              <th>Capacidad / Puertos</th>
               <th>Coordenadas</th>
               <th>Estado</th>
               <th>Registrado</th>
@@ -211,11 +257,46 @@
                   <span class="badge {{ typeLabel(node.type).badge }}">
                     {{ typeLabel(node.type).text }}
                   </span>
+                  @if (node.type === 'NAP' && node.napCapacity) {
+                    <span class="badge badge-gray mono" style="margin-left: 0.3rem">
+                      1x{{ node.napCapacity }}
+                    </span>
+                  }
+                </td>
+                <td>
+                  @if (node.type === 'NAP') {
+                    <div class="nap-meter">
+                      <div class="nap-meter-head">
+                        <span class="badge {{ napOccupancyMeta(node).badge }}">
+                          {{ napOccupancyMeta(node).text }}
+                        </span>
+                        <b class="mono">{{ node.usedPorts }}/{{ node.napCapacity ?? 8 }}</b>
+                      </div>
+                      <div class="nap-meter-bar">
+                        <span
+                          [style.width.%]="napOccupancyMeta(node).pct"
+                          [style.background]="napOccupancyMeta(node).color"
+                        ></span>
+                      </div>
+                    </div>
+                  } @else {
+                    <span class="cell-sub">—</span>
+                  }
                 </td>
                 <td class="cell-mono">{{ node.latitude }}, {{ node.longitude }}</td>
                 <td><app-status-badge [label]="statusLabel(node.status)" /></td>
                 <td class="cell-sub">{{ node.createdAt | date: 'dd/MM/yyyy' }}</td>
                 <td class="actions">
+                  @if (node.type === 'NAP') {
+                    <button
+                      type="button"
+                      class="btn btn-outline btn-sm"
+                      title="Asignar o liberar clientes en puertos NAP"
+                      (click)="openNapPorts(node)"
+                    >
+                      <i class="fas fa-plug"></i> Puertos
+                    </button>
+                  }
                   @if (leafletReady()) {
                     <button
                       type="button"
@@ -278,7 +359,16 @@
           </select>
         </div>
 
-        @if (editing()) {
+        @if (form.controls.type.value === 'NAP') {
+          <div class="form-group">
+            <label for="n-cap">Capacidad de Caja NAP</label>
+            <select id="n-cap" class="form-control" formControlName="napCapacity">
+              @for (cap of napCapacities; track cap.value) {
+                <option [ngValue]="cap.value">{{ cap.text }}</option>
+              }
+            </select>
+          </div>
+        } @else if (editing()) {
           <div class="form-group">
             <label for="n-status">Estado</label>
             <select id="n-status" class="form-control" formControlName="status">
@@ -288,6 +378,16 @@
           </div>
         }
       </div>
+
+      @if (editing() && form.controls.type.value === 'NAP') {
+        <div class="form-group">
+          <label for="n-status-nap">Estado</label>
+          <select id="n-status-nap" class="form-control" formControlName="status">
+            <option value="ACTIVE">Activo</option>
+            <option value="INACTIVE">Inactivo</option>
+          </select>
+        </div>
+      }
 
       <div class="form-row">
         <div class="form-group">
@@ -323,12 +423,161 @@
   </app-modal>
 }
 
+@if (managingNap(); as nap) {
+  <app-modal [title]="'Control de puertos — ' + nap.name" wide (close)="close()">
+    <div
+      class="row-wrap"
+      style="justify-content: space-between; margin-bottom: 0.85rem; padding: 0.75rem 0.9rem; background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius)"
+    >
+      <div class="row-wrap" style="gap: 0.5rem">
+        <span class="badge badge-violet mono">Caja NAP 1x{{ nap.napCapacity ?? 8 }}</span>
+        <span class="badge {{ napOccupancyMeta(nap).badge }}">
+          {{ napOccupancyMeta(nap).text }}
+        </span>
+      </div>
+      <div class="nap-meter" style="min-width: 180px">
+        <div class="nap-meter-head">
+          <span class="cell-sub">Ocupacion</span>
+          <b class="mono">{{ nap.usedPorts }} / {{ nap.napCapacity ?? 8 }} puertos</b>
+        </div>
+        <div class="nap-meter-bar">
+          <span
+            [style.width.%]="napOccupancyMeta(nap).pct"
+            [style.background]="napOccupancyMeta(nap).color"
+          ></span>
+        </div>
+      </div>
+    </div>
+
+    <div class="nap-ports-grid">
+      @for (slot of napPortSlots(); track slot.portNumber) {
+        @if (slot.assignment; as assigned) {
+          <div class="nap-port-tile is-occupied">
+            <div class="nap-port-head">
+              <span class="mono" style="color: var(--brand-1)">Puerto #{{ slot.portNumber }}</span>
+              <button
+                type="button"
+                class="btn btn-ghost btn-icon"
+                style="width: 24px; height: 24px; color: var(--danger); font-size: 0.72rem"
+                title="Liberar puerto"
+                [disabled]="busyAssignmentId() === assigned.id"
+                (click)="unassignFromNap(assigned)"
+              >
+                <i class="fas fa-unlink"></i>
+              </button>
+            </div>
+            <div class="nap-port-client" [title]="clientLabel(assigned.clientId).name">
+              {{ clientLabel(assigned.clientId).name }}
+            </div>
+            <div class="cell-sub">{{ clientLabel(assigned.clientId).sub }}</div>
+          </div>
+        } @else {
+          <button
+            type="button"
+            class="nap-port-tile is-free"
+            [class.is-selected]="assignForm.controls.portNumber.value === '' + slot.portNumber"
+            style="text-align: left; font-family: inherit"
+            (click)="pickPort(slot.portNumber)"
+          >
+            <div class="nap-port-head">
+              <span class="mono" style="color: #059669">Puerto #{{ slot.portNumber }}</span>
+              <span class="badge badge-success" style="font-size: 0.62rem">Libre</span>
+            </div>
+            <div class="cell-sub">Clic para seleccionar</div>
+          </button>
+        }
+      }
+    </div>
+
+    @if (nap.napStatus === 'FULL') {
+      <div class="alert alert-danger">
+        <i class="fas fa-circle-xmark"></i>
+        <span>
+          Esta caja NAP esta <b>llena</b> ({{ nap.usedPorts }}/{{ nap.napCapacity ?? 8 }} puertos
+          ocupados). Libera un puerto o edita la caja a <b>1x16</b> para conectar mas clientes.
+        </span>
+      </div>
+    } @else {
+      <form
+        [formGroup]="assignForm"
+        (ngSubmit)="assignClientToNap()"
+        id="nap-assign-form"
+        style="padding-top: 0.85rem; border-top: 1px solid var(--border)"
+      >
+        <div class="form-group">
+          <label for="nap-c-search">Asignar cliente a un puerto disponible</label>
+          <div class="topbar-search" style="width: 100%; margin-bottom: 0.5rem">
+            <i class="fas fa-search"></i>
+            <input
+              id="nap-c-search"
+              placeholder="Filtrar cliente por codigo, nombre o documento…"
+              [value]="clientSearch()"
+              (input)="clientSearch.set($any($event.target).value)"
+            />
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label for="nap-client">Cliente</label>
+            <select id="nap-client" class="form-control" formControlName="clientId">
+              <option value="">Selecciona un cliente…</option>
+              @for (client of filteredClients(); track client.id) {
+                <option [value]="client.id" [disabled]="isClientAssignedElsewhere(client.id)">
+                  {{ clientOptionText(client) }}
+                </option>
+              }
+            </select>
+            @if (assignForm.controls.clientId.touched && assignForm.controls.clientId.invalid) {
+              <div class="field-error">Selecciona un cliente disponible.</div>
+            }
+          </div>
+
+          <div class="form-group">
+            <label for="nap-port">Puerto</label>
+            <select id="nap-port" class="form-control mono" formControlName="portNumber">
+              <option value="">Automatico (siguiente libre)</option>
+              @for (p of freePortsForNap(); track p) {
+                <option [value]="p">Puerto #{{ p }}</option>
+              }
+            </select>
+          </div>
+        </div>
+      </form>
+    }
+
+    <ng-container modalFooter>
+      <button type="button" class="btn btn-outline" (click)="close()">Cerrar</button>
+      @if (nap.napStatus !== 'FULL') {
+        <button
+          appRipple
+          type="submit"
+          form="nap-assign-form"
+          class="btn btn-grad"
+          [disabled]="saving() || clients.value().length === 0"
+        >
+          @if (saving()) {
+            <i class="fas fa-circle-notch" style="animation: spinSlow 1s linear infinite"></i>
+            Asignando…
+          } @else {
+            <i class="fas fa-plug"></i> Asignar cliente
+          }
+        </button>
+      }
+    </ng-container>
+  </app-modal>
+}
+
 @if (deleting(); as target) {
   <app-modal title="Eliminar nodo de cobertura" (close)="close()">
     <div class="alert alert-danger">
       <i class="fas fa-triangle-exclamation"></i>
       <span>
-        Vas a eliminar el nodo <b>{{ target.name }}</b> ({{ typeLabel(target.type).text }}). Esta accion no se puede deshacer.
+        Vas a eliminar el nodo <b>{{ target.name }}</b> ({{ typeLabel(target.type).text }}).
+        @if (target.type === 'NAP' && target.usedPorts > 0) {
+          Tambien se liberaran sus <b>{{ target.usedPorts }}</b> puerto(s) asignado(s).
+        }
+        Esta accion no se puede deshacer.
       </span>
     </div>
 

@@ -4,6 +4,7 @@ import { Observable } from 'rxjs';
 
 import {
   AssignEquipmentRequest,
+  AssignNapClientRequest,
   AuthorizeOnuRequest,
   CreateEquipmentRequest,
   CreateNodeRequest,
@@ -84,6 +85,14 @@ export class NetworkApi {
 
   deleteNode(id: string): Observable<void> {
     return this.http.delete<void>(`${API.network.nodes}/${id}`);
+  }
+
+  assignNapClient(nodeId: string, body: AssignNapClientRequest): Observable<NetworkNode> {
+    return this.http.post<NetworkNode>(`${API.network.nodes}/${nodeId}/assign`, body);
+  }
+
+  unassignNapClient(nodeId: string, assignmentId: string): Observable<NetworkNode> {
+    return this.http.delete<NetworkNode>(`${API.network.nodes}/${nodeId}/assignments/${assignmentId}`);
   }
 
   // ---------- Inventario ----------

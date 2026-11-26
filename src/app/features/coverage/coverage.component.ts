@@ -10,9 +10,18 @@ import {
   viewChild,
 } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
+import { catchError, of } from 'rxjs';
 
-import { NetworkApi } from '../../core/api';
-import { NetworkNode, NodeStatus, NodeType } from '../../core/models';
+import { CrmApi, NetworkApi } from '../../core/api';
+import {
+  Client,
+  NapCapacity,
+  NapOccupancyStatus,
+  NapPortAssignment,
+  NetworkNode,
+  NodeStatus,
+  NodeType,
+} from '../../core/models';
 import { collection } from '../../core/state/collection';
 import { describeHttpError } from '../../core/ui/http-error';
 import { ToastService } from '../../core/ui/toast.service';
@@ -38,6 +47,12 @@ const NODE_COLORS: Record<NodeType, string> = {
   NAP: '#0891b2',
   OLT_SITE: '#2563eb',
   TOWER: '#d97706',
+};
+
+const NAP_OCCUPANCY_COLORS: Record<NapOccupancyStatus, string> = {
+  AVAILABLE: '#10b981',
+  LOW: '#f59e0b',
+  FULL: '#ef4444',
 };
 
 const DEFAULT_CENTER: [number, number] = [1.2136, -77.2811];
@@ -68,10 +83,16 @@ interface LeafletStatic {
 
 type TypeFilter = NodeType | 'ALL';
 type StatusFilter = NodeStatus | 'ALL';
+type NapFilter = NapOccupancyStatus | 'ALL';
+
+export interface NapPortSlot {
+  portNumber: number;
+  assignment: NapPortAssignment | null;
+}
 
 /**
- * Cobertura: mapa interactivo con Leaflet + OpenStreetMap y gestion completa
- * (crear, editar, eliminar, buscar y paginar) de nodos, cajas NAP, sitios OLT y torres.
+ * Cobertura: mapa interactivo Leaflet + OpenStreetMap, gestion de nodos,
+ * capacidad de cajas NAP (1x8 / 1x16) y control de puertos asignados por cliente.
  */
 @Component({
   selector: 'app-coverage',
@@ -89,6 +110,7 @@ type StatusFilter = NodeStatus | 'ALL';
 })
 export class CoverageComponent {
   private readonly api = inject(NetworkApi);
+  private readonly crm = inject(CrmApi);
   private readonly toast = inject(ToastService);
   private readonly fb = inject(FormBuilder);
   private readonly destroyRef = inject(DestroyRef);
@@ -98,17 +120,26 @@ export class CoverageComponent {
   private markersLayer: LeafletLayerGroup | null = null;
 
   protected readonly nodes = collection(() => this.api.nodes(), [] as NetworkNode[]);
+  protected readonly clients = collection(
+    () => this.crm.clients().pipe(catchError(() => of([] as Client[]))),
+    [] as Client[],
+  );
+
   protected readonly leafletReady = signal(typeof this.leaflet() !== 'undefined');
   protected readonly pickedCoords = signal<{ lat: number; lon: number } | null>(null);
 
   protected readonly search = signal('');
   protected readonly typeFilter = signal<TypeFilter>('ALL');
   protected readonly statusFilter = signal<StatusFilter>('ALL');
+  protected readonly napFilter = signal<NapFilter>('ALL');
 
   protected readonly modalOpen = signal(false);
   protected readonly editing = signal<NetworkNode | null>(null);
   protected readonly deleting = signal<NetworkNode | null>(null);
+  protected readonly managingNapId = signal<string | null>(null);
+  protected readonly clientSearch = signal('');
   protected readonly saving = signal(false);
+  protected readonly busyAssignmentId = signal<string | null>(null);
 
   protected readonly nodeTypes: { value: NodeType; text: string }[] = [
     { value: 'POP', text: 'POP / nodo de distribucion' },
@@ -117,18 +148,103 @@ export class CoverageComponent {
     { value: 'TOWER', text: 'Torre / antena' },
   ];
 
+  protected readonly napCapacities: { value: NapCapacity; text: string }[] = [
+    { value: 8, text: '1x8 (8 puertos)' },
+    { value: 16, text: '1x16 (16 puertos)' },
+  ];
+
   protected readonly statusOptions: { value: StatusFilter; text: string }[] = [
     { value: 'ALL', text: 'Todos' },
     { value: 'ACTIVE', text: 'Activos' },
     { value: 'INACTIVE', text: 'Inactivos' },
   ];
 
+  protected readonly napFilterOptions: { value: NapFilter; text: string }[] = [
+    { value: 'ALL', text: 'Cualquier ocupacion NAP' },
+    { value: 'AVAILABLE', text: 'NAP con puertos disponibles' },
+    { value: 'LOW', text: 'NAP con pocos puertos' },
+    { value: 'FULL', text: 'NAP llena' },
+  ];
+
   protected readonly form = this.fb.nonNullable.group({
     name: ['', Validators.required],
     type: ['NAP' as NodeType, Validators.required],
+    napCapacity: [8 as NapCapacity],
     latitude: [DEFAULT_CENTER[0], [Validators.required, Validators.min(-90), Validators.max(90)]],
     longitude: [DEFAULT_CENTER[1], [Validators.required, Validators.min(-180), Validators.max(180)]],
     status: ['ACTIVE' as NodeStatus, Validators.required],
+  });
+
+  protected readonly assignForm = this.fb.nonNullable.group({
+    clientId: ['', Validators.required],
+    portNumber: [''],
+  });
+
+  /** Caja NAP actualmente abierta en el modal de control de puertos. */
+  protected readonly managingNap = computed<NetworkNode | null>(() => {
+    const id = this.managingNapId();
+    if (!id) {
+      return null;
+    }
+    return this.nodes.value().find((n) => n.id === id) ?? null;
+  });
+
+  /** Mapa clienteId -> nombre de caja NAP + puerto donde ya esta conectado. */
+  protected readonly clientNapIndex = computed(() => {
+    const map = new Map<string, { nodeName: string; portNumber: number }>();
+    for (const node of this.nodes.value()) {
+      for (const a of node.assignments ?? []) {
+        map.set(a.clientId, { nodeName: node.name, portNumber: a.portNumber });
+      }
+    }
+    return map;
+  });
+
+  protected readonly napPortSlots = computed<NapPortSlot[]>(() => {
+    const nap = this.managingNap();
+    if (!nap || nap.type !== 'NAP') {
+      return [];
+    }
+    const capacity = nap.napCapacity ?? 8;
+    const byPort = new Map((nap.assignments ?? []).map((a) => [a.portNumber, a]));
+    return Array.from({ length: capacity }, (_, i) => ({
+      portNumber: i + 1,
+      assignment: byPort.get(i + 1) ?? null,
+    }));
+  });
+
+  protected readonly freePortsForNap = computed(() =>
+    this.napPortSlots()
+      .filter((s) => !s.assignment)
+      .map((s) => s.portNumber),
+  );
+
+  protected readonly filteredClients = computed(() => {
+    const term = normalize(this.clientSearch());
+    const list = this.clients.value();
+    if (!term) {
+      return list;
+    }
+    return list.filter((c) =>
+      [c.clientCode, c.fullName, c.document, c.address]
+        .map((v) => normalize(v))
+        .some((v) => v.includes(term)),
+    );
+  });
+
+  protected readonly napSummary = computed(() => {
+    const naps = this.nodes.value().filter((n) => n.type === 'NAP');
+    const totalPorts = naps.reduce((s, n) => s + (n.napCapacity ?? 8), 0);
+    const usedPorts = naps.reduce((s, n) => s + (n.usedPorts ?? 0), 0);
+    return {
+      total: naps.length,
+      available: naps.filter((n) => n.napStatus === 'AVAILABLE').length,
+      low: naps.filter((n) => n.napStatus === 'LOW').length,
+      full: naps.filter((n) => n.napStatus === 'FULL').length,
+      totalPorts,
+      usedPorts,
+      freePorts: Math.max(0, totalPorts - usedPorts),
+    };
   });
 
   protected readonly byType = computed(() => {
@@ -147,6 +263,7 @@ export class CoverageComponent {
     const term = normalize(this.search());
     const type = this.typeFilter();
     const status = this.statusFilter();
+    const nap = this.napFilter();
     return this.nodes.value().filter((node) => {
       if (type !== 'ALL' && node.type !== type) {
         return false;
@@ -154,10 +271,14 @@ export class CoverageComponent {
       if (status !== 'ALL' && node.status !== status) {
         return false;
       }
+      if (nap !== 'ALL' && (node.type !== 'NAP' || node.napStatus !== nap)) {
+        return false;
+      }
       if (!term) {
         return true;
       }
-      return [node.name, nodeTypeLabel(node.type).text, `${node.latitude}`, `${node.longitude}`]
+      const capText = node.napCapacity ? `1x${node.napCapacity}` : '';
+      return [node.name, nodeTypeLabel(node.type).text, capText, `${node.latitude}`, `${node.longitude}`]
         .map((v) => normalize(v))
         .some((v) => v.includes(term));
     });
@@ -207,6 +328,43 @@ export class CoverageComponent {
     });
   }
 
+  protected napOccupancyMeta(node: NetworkNode): { text: string; badge: string; color: string; pct: number } {
+    const cap = node.napCapacity ?? 8;
+    const used = node.usedPorts ?? 0;
+    const free = node.availablePorts ?? Math.max(0, cap - used);
+    const pct = Math.min(100, Math.round((used / cap) * 100));
+    switch (node.napStatus) {
+      case 'FULL':
+        return { text: 'Llena (0 libres)', badge: 'badge-danger', color: '#ef4444', pct };
+      case 'LOW':
+        return { text: `Pocos puertos (${free} libre${free === 1 ? '' : 's'})`, badge: 'badge-warning', color: '#f59e0b', pct };
+      default:
+        return { text: `Disponible (${free} libres)`, badge: 'badge-success', color: '#10b981', pct };
+    }
+  }
+
+  protected clientLabel(clientId: string): { name: string; sub: string } {
+    const client = this.clients.value().find((c) => c.id === clientId);
+    if (!client) {
+      return { name: 'Cliente', sub: clientId.slice(0, 8) };
+    }
+    return {
+      name: client.fullName,
+      sub: `${client.clientCode ? '#' + client.clientCode + ' · ' : ''}${client.document}`,
+    };
+  }
+
+  protected clientOptionText(client: Client): string {
+    const prefix = client.clientCode ? `[${client.clientCode}] ` : '';
+    const existing = this.clientNapIndex().get(client.id);
+    const suffix = existing ? ` — ya en ${existing.nodeName} (P${existing.portNumber})` : '';
+    return `${prefix}${client.fullName} · ${client.document}${suffix}`;
+  }
+
+  protected isClientAssignedElsewhere(clientId: string): boolean {
+    return this.clientNapIndex().has(clientId);
+  }
+
   protected focusNode(node: NetworkNode): void {
     if (this.map) {
       this.map.setView([node.latitude, node.longitude], 16);
@@ -238,6 +396,7 @@ export class CoverageComponent {
     this.form.reset({
       name: '',
       type: 'NAP',
+      napCapacity: 8,
       latitude: lat ?? picked?.lat ?? DEFAULT_CENTER[0],
       longitude: lon ?? picked?.lon ?? DEFAULT_CENTER[1],
       status: 'ACTIVE',
@@ -250,11 +409,26 @@ export class CoverageComponent {
     this.form.reset({
       name: node.name,
       type: node.type,
+      napCapacity: (node.napCapacity ?? 8) as NapCapacity,
       latitude: node.latitude,
       longitude: node.longitude,
       status: node.status,
     });
     this.modalOpen.set(true);
+  }
+
+  protected openNapPorts(node: NetworkNode): void {
+    this.managingNapId.set(node.id);
+    this.clientSearch.set('');
+    const firstFreeClient = this.clients.value().find((c) => !this.clientNapIndex().has(c.id));
+    this.assignForm.reset({
+      clientId: firstFreeClient?.id ?? this.clients.value()[0]?.id ?? '',
+      portNumber: '',
+    });
+  }
+
+  protected pickPort(portNumber: number): void {
+    this.assignForm.controls.portNumber.setValue(String(portNumber));
   }
 
   protected confirmDelete(node: NetworkNode): void {
@@ -265,6 +439,7 @@ export class CoverageComponent {
     this.modalOpen.set(false);
     this.editing.set(null);
     this.deleting.set(null);
+    this.managingNapId.set(null);
   }
 
   protected save(): void {
@@ -273,6 +448,7 @@ export class CoverageComponent {
       return;
     }
     const raw = this.form.getRawValue();
+    const napCapacity = raw.type === 'NAP' ? (Number(raw.napCapacity) as NapCapacity) : null;
     const current = this.editing();
     this.saving.set(true);
 
@@ -283,12 +459,14 @@ export class CoverageComponent {
           latitude: Number(raw.latitude),
           longitude: Number(raw.longitude),
           status: raw.status,
+          napCapacity,
         })
       : this.api.createNode({
           name: raw.name.trim(),
           type: raw.type,
           latitude: Number(raw.latitude),
           longitude: Number(raw.longitude),
+          napCapacity,
         });
 
     request$.subscribe({
@@ -297,13 +475,70 @@ export class CoverageComponent {
         this.modalOpen.set(false);
         this.editing.set(null);
         this.pickedCoords.set(null);
+        const capInfo = node.type === 'NAP' && node.napCapacity ? ` (1x${node.napCapacity})` : '';
         this.toast.success(
-          current ? `Nodo "${node.name}" actualizado.` : `Nodo "${node.name}" registrado.`,
+          current
+            ? `Nodo "${node.name}"${capInfo} actualizado.`
+            : `Nodo "${node.name}"${capInfo} registrado.`,
         );
         this.nodes.reload();
       },
       error: (err: unknown) => {
         this.saving.set(false);
+        this.toast.error(describeHttpError(err));
+      },
+    });
+  }
+
+  protected assignClientToNap(): void {
+    const nap = this.managingNap();
+    if (!nap || this.assignForm.invalid || this.saving()) {
+      this.assignForm.markAllAsTouched();
+      return;
+    }
+    const raw = this.assignForm.getRawValue();
+    this.saving.set(true);
+    this.api
+      .assignNapClient(nap.id, {
+        clientId: raw.clientId,
+        portNumber: raw.portNumber ? Number(raw.portNumber) : null,
+      })
+      .subscribe({
+        next: (updated) => {
+          this.saving.set(false);
+          this.nodes.update((list) => list.map((n) => (n.id === updated.id ? updated : n)));
+          const nextFreeClient = this.clients
+            .value()
+            .find((c) => c.id !== raw.clientId && !this.clientNapIndex().has(c.id));
+          this.assignForm.reset({
+            clientId: nextFreeClient?.id ?? '',
+            portNumber: '',
+          });
+          this.toast.success(
+            `Cliente asignado a ${updated.name} (${updated.usedPorts}/${updated.napCapacity} puertos ocupados).`,
+          );
+        },
+        error: (err: unknown) => {
+          this.saving.set(false);
+          this.toast.error(describeHttpError(err));
+        },
+      });
+  }
+
+  protected unassignFromNap(assignment: NapPortAssignment): void {
+    const nap = this.managingNap();
+    if (!nap || this.busyAssignmentId()) {
+      return;
+    }
+    this.busyAssignmentId.set(assignment.id);
+    this.api.unassignNapClient(nap.id, assignment.id).subscribe({
+      next: (updated) => {
+        this.busyAssignmentId.set(null);
+        this.nodes.update((list) => list.map((n) => (n.id === updated.id ? updated : n)));
+        this.toast.success(`Puerto #${assignment.portNumber} liberado en ${updated.name}.`);
+      },
+      error: (err: unknown) => {
+        this.busyAssignmentId.set(null);
         this.toast.error(describeHttpError(err));
       },
     });
@@ -369,7 +604,13 @@ export class CoverageComponent {
     this.markersLayer.clearLayers();
 
     for (const node of list) {
-      const color = node.status === 'ACTIVE' ? NODE_COLORS[node.type] : '#94a3b8';
+      const color =
+        node.status !== 'ACTIVE'
+          ? '#94a3b8'
+          : node.type === 'NAP' && node.napStatus
+            ? NAP_OCCUPANCY_COLORS[node.napStatus]
+            : NODE_COLORS[node.type];
+
       const iconHtml = `
         <div style="
           width:32px;height:32px;border-radius:50%;
@@ -390,12 +631,22 @@ export class CoverageComponent {
       const safeName = escapeHtml(node.name);
       const typeText = escapeHtml(nodeTypeLabel(node.type).text);
       const statusText = escapeHtml(nodeStatusLabel(node.status).text);
+      let napHtml = '';
+      if (node.type === 'NAP') {
+        const cap = node.napCapacity ?? 8;
+        const used = node.usedPorts ?? 0;
+        const occ = this.napOccupancyMeta(node);
+        napHtml = `<div style="margin-top:4px;font-size:11px;font-weight:700;color:${occ.color}">
+          Caja 1x${cap} · ${used}/${cap} puertos · ${escapeHtml(occ.text)}
+        </div>`;
+      }
       L.marker([node.latitude, node.longitude], { icon })
         .bindPopup(
-          `<div style="min-width:155px;font-family:inherit">
+          `<div style="min-width:175px;font-family:inherit">
             <strong style="font-size:13px">${safeName}</strong><br/>
-            <span style="font-size:11px;color:#475569">${typeText} · ${statusText}</span><br/>
-            <code style="font-size:11px;color:#64748b">${node.latitude}, ${node.longitude}</code>
+            <span style="font-size:11px;color:#475569">${typeText} · ${statusText}</span>
+            ${napHtml}
+            <div style="margin-top:3px"><code style="font-size:11px;color:#64748b">${node.latitude}, ${node.longitude}</code></div>
           </div>`,
         )
         .addTo(this.markersLayer);

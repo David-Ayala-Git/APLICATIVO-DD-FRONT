@@ -5,6 +5,8 @@ export type OnuStatus = 'ONLINE' | 'LOS' | 'UNAUTHORIZED';
 export type OnuVendor = 'HUAWEI' | 'ZTE' | 'OTHER';
 export type NodeType = 'POP' | 'NAP' | 'OLT_SITE' | 'TOWER';
 export type NodeStatus = 'ACTIVE' | 'INACTIVE';
+export type NapCapacity = 8 | 16;
+export type NapOccupancyStatus = 'AVAILABLE' | 'LOW' | 'FULL';
 export type EquipmentType = 'ROUTER' | 'ONT' | 'SWITCH' | 'ANTENNA' | 'OTHER';
 export type EquipmentStatus = 'IN_STOCK' | 'ASSIGNED' | 'FAULTY' | 'RETIRED';
 
@@ -73,6 +75,14 @@ export interface SignalUpdateRequest {
   rxPower: number;
 }
 
+export interface NapPortAssignment {
+  id: string;
+  nodeId: string;
+  clientId: string;
+  portNumber: number;
+  assignedAt: string;
+}
+
 export interface NetworkNode {
   id: string;
   name: string;
@@ -80,6 +90,12 @@ export interface NetworkNode {
   latitude: number;
   longitude: number;
   status: NodeStatus;
+  /** Capacidad de puertos para cajas NAP: 8 (1x8) o 16 (1x16). */
+  napCapacity: NapCapacity | null;
+  usedPorts: number;
+  availablePorts: number;
+  napStatus: NapOccupancyStatus | null;
+  assignments: NapPortAssignment[];
   createdAt: string;
 }
 
@@ -88,6 +104,7 @@ export interface CreateNodeRequest {
   type: NodeType;
   latitude: number;
   longitude: number;
+  napCapacity?: NapCapacity | null;
 }
 
 export interface UpdateNodeRequest {
@@ -96,6 +113,12 @@ export interface UpdateNodeRequest {
   latitude: number;
   longitude: number;
   status?: NodeStatus;
+  napCapacity?: NapCapacity | null;
+}
+
+export interface AssignNapClientRequest {
+  clientId: string;
+  portNumber?: number | null;
 }
 
 export interface Equipment {

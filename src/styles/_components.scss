@@ -1387,6 +1387,80 @@ tr:hover .avatar-sm,
   border-radius: 0 0 14px 14px;
   z-index: 1;
 }
+.nap-meter {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  min-width: 145px;
+}
+.nap-meter-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.4rem;
+  font-size: 0.74rem;
+}
+.nap-meter-bar {
+  height: 6px;
+  border-radius: 999px;
+  background: var(--border);
+  overflow: hidden;
+}
+.nap-meter-bar > span {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  transition: width 0.25s ease;
+}
+.nap-ports-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(175px, 100%), 1fr));
+  gap: 0.55rem;
+  margin-bottom: 1rem;
+}
+.nap-port-tile {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 0.6rem 0.7rem;
+  background: var(--surface-2);
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  transition: border-color 0.2s, background 0.2s, transform 0.2s;
+}
+.nap-port-tile.is-free {
+  border-style: dashed;
+  border-color: rgba(16, 185, 129, 0.45);
+  background: rgba(16, 185, 129, 0.06);
+  cursor: pointer;
+}
+.nap-port-tile.is-free:hover,
+.nap-port-tile.is-selected {
+  border-style: solid;
+  border-color: var(--brand-1);
+  background: var(--purple-light);
+  transform: translateY(-1px);
+}
+.nap-port-tile.is-occupied {
+  background: var(--surface);
+  border-color: rgba(124, 58, 237, 0.28);
+}
+.nap-port-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.4rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+.nap-port-client {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .code-mode-toggle {
   display: inline-flex;
   gap: 0.35rem;
