@@ -1123,60 +1123,7 @@ tr:hover .avatar-sm,
 }
 
 /* ============ TARJETAS GLASS DE PLANES (REFERENCIA P2P) ============ */
-.plan-glass-stage {
-  position: relative;
-  overflow: hidden;
-  border-radius: 24px;
-  padding: 1.25rem;
-  background: #0d0e11;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  box-shadow: 0 22px 48px -24px rgba(10, 12, 22, 0.55);
-}
-.plan-glass-bg {
-  position: absolute;
-  inset: 0;
-  overflow: hidden;
-  pointer-events: none;
-  z-index: 0;
-}
-.plan-glass-blob {
-  position: absolute;
-  border-radius: 50%;
-  filter: blur(52px);
-  opacity: 0.78;
-  animation: planGlassFloat 14s ease-in-out infinite alternate;
-}
-.plan-glass-b1 {
-  width: 340px;
-  height: 340px;
-  left: -80px;
-  top: -110px;
-  background: #8a8a8a;
-}
-.plan-glass-b2 {
-  width: 300px;
-  height: 300px;
-  right: -70px;
-  top: 22%;
-  background: #c4c4c4;
-  animation-delay: -5s;
-}
-.plan-glass-b3 {
-  width: 280px;
-  height: 280px;
-  left: 28%;
-  bottom: -120px;
-  background: #525252;
-  animation-delay: -9s;
-}
-@keyframes planGlassFloat {
-  to {
-    transform: translate(32px, 22px) scale(1.1);
-  }
-}
 .plan-glass-grid {
-  position: relative;
-  z-index: 1;
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(min(220px, 100%), 1fr));
   gap: 0.95rem;
@@ -1187,13 +1134,13 @@ tr:hover .avatar-sm,
   border-radius: 22px;
   padding: 0.95rem 1rem 0.9rem;
   color: #fff;
-  background: linear-gradient(160deg, rgba(255, 255, 255, 0.2), rgba(255, 255, 255, 0.06));
-  border: 1px solid rgba(255, 255, 255, 0.48);
-  backdrop-filter: blur(26px) saturate(1.55);
-  -webkit-backdrop-filter: blur(26px) saturate(1.55);
+  background: linear-gradient(160deg, rgba(64, 68, 78, 0.72), rgba(32, 36, 44, 0.64));
+  border: 1px solid rgba(255, 255, 255, 0.45);
+  backdrop-filter: blur(22px) saturate(1.45);
+  -webkit-backdrop-filter: blur(22px) saturate(1.45);
   box-shadow:
-    0 22px 44px -18px rgba(0, 0, 0, 0.58),
-    inset 0 1px 0 rgba(255, 255, 255, 0.62),
+    0 18px 36px -18px rgba(15, 23, 42, 0.45),
+    inset 0 1px 0 rgba(255, 255, 255, 0.58),
     inset 0 -1px 0 rgba(255, 255, 255, 0.14);
   display: flex;
   flex-direction: column;
@@ -1202,10 +1149,10 @@ tr:hover .avatar-sm,
 }
 .plan-glass-card:hover {
   transform: translateY(-3px);
-  border-color: rgba(255, 255, 255, 0.72);
+  border-color: rgba(255, 255, 255, 0.7);
   box-shadow:
-    0 28px 50px -18px rgba(0, 0, 0, 0.68),
-    inset 0 1px 0 rgba(255, 255, 255, 0.78),
+    0 24px 44px -18px rgba(15, 23, 42, 0.55),
+    inset 0 1px 0 rgba(255, 255, 255, 0.75),
     inset 0 -1px 0 rgba(255, 255, 255, 0.18);
 }
 .plan-glass-card.is-disabled {
