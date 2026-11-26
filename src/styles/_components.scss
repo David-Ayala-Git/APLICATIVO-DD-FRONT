@@ -1381,6 +1381,24 @@ tr:hover .avatar-sm,
 }
 
 /* Mapa Leaflet */
+.coverage-map-toolbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  padding: 0.6rem 1rem;
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--border);
+}
+.coverage-map-toolbar-label {
+  font-size: 0.76rem;
+  font-weight: 700;
+  color: var(--text-secondary);
+  margin-right: 0.25rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
 .coverage-map-leaflet {
   width: 100%;
   height: clamp(320px, 50vw, 460px);

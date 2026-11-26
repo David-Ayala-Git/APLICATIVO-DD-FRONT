@@ -58,6 +58,10 @@ const NAP_OCCUPANCY_COLORS: Record<NapOccupancyStatus, string> = {
 const DEFAULT_CENTER: [number, number] = [1.2136, -77.2811];
 
 /** Subconjunto minimo de la API global de Leaflet cargada via CDN en index.html. */
+interface LeafletTileLayer {
+  addTo(map: LeafletMap): this;
+  remove(): void;
+}
 interface LeafletMap {
   setView(center: [number, number], zoom: number): this;
   fitBounds(bounds: [number, number][], options?: { padding?: [number, number]; maxZoom?: number }): this;
@@ -75,11 +79,102 @@ interface LeafletMarker {
 }
 interface LeafletStatic {
   map(el: HTMLElement, opts?: Record<string, unknown>): LeafletMap;
-  tileLayer(url: string, opts?: Record<string, unknown>): { addTo(map: LeafletMap): unknown };
+  tileLayer(url: string, opts?: Record<string, unknown>): LeafletTileLayer;
   layerGroup(): LeafletLayerGroup;
   divIcon(opts: Record<string, unknown>): unknown;
   marker(latlng: [number, number], opts?: Record<string, unknown>): LeafletMarker;
 }
+
+type MapStyleId = 'streets' | 'topo' | 'relief' | 'satellite' | 'dark';
+
+interface MapTileSpec {
+  url: string;
+  maxZoom: number;
+  attribution: string;
+  opacity?: number;
+}
+
+interface MapStyleOption {
+  id: MapStyleId;
+  label: string;
+  icon: string;
+  layers: MapTileSpec[];
+}
+
+const MAP_STYLES: MapStyleOption[] = [
+  {
+    id: 'streets',
+    label: 'Calles',
+    icon: 'fas fa-road',
+    layers: [
+      {
+        url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+        maxZoom: 19,
+        attribution: '&copy; OpenStreetMap contributors',
+      },
+    ],
+  },
+  {
+    id: 'topo',
+    label: 'Topografico',
+    icon: 'fas fa-mountain',
+    layers: [
+      {
+        url: 'https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png',
+        maxZoom: 17,
+        attribution: '&copy; OpenStreetMap, SRTM | &copy; OpenTopoMap (CC-BY-SA)',
+      },
+    ],
+  },
+  {
+    id: 'relief',
+    label: 'Relieve 3D',
+    icon: 'fas fa-mountain-sun',
+    layers: [
+      {
+        url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Shaded_Relief/MapServer/tile/{z}/{y}/{x}',
+        maxZoom: 13,
+        attribution: 'Tiles &copy; Esri &mdash; World Shaded Relief',
+      },
+      {
+        url: 'https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}',
+        maxZoom: 19,
+        attribution: '&copy; Esri',
+        opacity: 0.9,
+      },
+    ],
+  },
+  {
+    id: 'satellite',
+    label: 'Satelite',
+    icon: 'fas fa-satellite',
+    layers: [
+      {
+        url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+        maxZoom: 19,
+        attribution: 'Tiles &copy; Esri &mdash; World Imagery',
+      },
+      {
+        url: 'https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}',
+        maxZoom: 19,
+        attribution: '&copy; Esri',
+        opacity: 0.95,
+      },
+    ],
+  },
+  {
+    id: 'dark',
+    label: 'Oscuro',
+    icon: 'fas fa-moon',
+    layers: [
+      {
+        url: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
+        maxZoom: 19,
+        attribution: '&copy; OpenStreetMap contributors &copy; CARTO',
+      },
+    ],
+  },
+];
 
 type TypeFilter = NodeType | 'ALL';
 type StatusFilter = NodeStatus | 'ALL';
@@ -118,6 +213,10 @@ export class CoverageComponent {
   private readonly mapHost = viewChild<ElementRef<HTMLDivElement>>('mapHost');
   private map: LeafletMap | null = null;
   private markersLayer: LeafletLayerGroup | null = null;
+  private activeTileLayers: LeafletTileLayer[] = [];
+
+  protected readonly mapStyles = MAP_STYLES;
+  protected readonly mapStyle = signal<MapStyleId>('streets');
 
   protected readonly nodes = collection(() => this.api.nodes(), [] as NetworkNode[]);
   protected readonly clients = collection(
@@ -328,6 +427,7 @@ export class CoverageComponent {
       this.map?.remove();
       this.map = null;
       this.markersLayer = null;
+      this.activeTileLayers = [];
     });
   }
 
@@ -590,6 +690,11 @@ export class CoverageComponent {
     });
   }
 
+  protected setMapStyle(styleId: MapStyleId): void {
+    this.mapStyle.set(styleId);
+    this.applyBaseLayers(styleId);
+  }
+
   private leaflet(): LeafletStatic | undefined {
     return (window as unknown as { L?: LeafletStatic }).L;
   }
@@ -608,18 +713,36 @@ export class CoverageComponent {
       DEFAULT_CENTER,
       13,
     );
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      maxZoom: 19,
-      attribution: '&copy; OpenStreetMap contributors',
-    }).addTo(map);
+    this.map = map;
+    this.applyBaseLayers(this.mapStyle());
     this.markersLayer = L.layerGroup().addTo(map);
     map.on('click', (e) => {
       const lat = Number(e.latlng.lat.toFixed(6));
       const lon = Number(e.latlng.lng.toFixed(6));
       this.pickedCoords.set({ lat, lon });
     });
-    this.map = map;
     setTimeout(() => this.map?.invalidateSize(), 150);
+  }
+
+  private applyBaseLayers(styleId: MapStyleId): void {
+    const L = this.leaflet();
+    if (!L || !this.map) {
+      return;
+    }
+    for (const layer of this.activeTileLayers) {
+      layer.remove();
+    }
+    this.activeTileLayers = [];
+
+    const spec = MAP_STYLES.find((s) => s.id === styleId) ?? MAP_STYLES[0];
+    for (const tile of spec.layers) {
+      const layer = L.tileLayer(tile.url, {
+        maxZoom: tile.maxZoom,
+        attribution: tile.attribution,
+        ...(tile.opacity !== undefined ? { opacity: tile.opacity } : {}),
+      }).addTo(this.map);
+      this.activeTileLayers.push(layer);
+    }
   }
 
   private renderMarkers(list: NetworkNode[]): void {

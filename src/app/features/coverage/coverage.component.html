@@ -55,6 +55,22 @@
           (retry)="nodes.reload()"
         />
       } @else if (leafletReady()) {
+        <div class="coverage-map-toolbar" role="group" aria-label="Tipo de relieve del mapa">
+          <span class="coverage-map-toolbar-label">
+            <i class="fas fa-layer-group"></i> Relieve:
+          </span>
+          @for (style of mapStyles; track style.id) {
+            <button
+              type="button"
+              class="btn btn-sm"
+              [class.btn-grad]="mapStyle() === style.id"
+              [class.btn-outline]="mapStyle() !== style.id"
+              (click)="setMapStyle(style.id)"
+            >
+              <i class="{{ style.icon }}"></i> {{ style.label }}
+            </button>
+          }
+        </div>
         <div class="coverage-map-leaflet" #mapHost aria-label="Mapa interactivo de cobertura"></div>
       } @else if (plotted().length === 0) {
         <div class="empty">
