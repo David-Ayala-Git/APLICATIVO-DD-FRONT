@@ -4,7 +4,7 @@ import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { catchError, of } from 'rxjs';
 
 import { CrmApi, NetworkApi } from '../../core/api';
-import { Client, Equipment, EquipmentType } from '../../core/models';
+import { Client, Equipment, EquipmentStatus, EquipmentType } from '../../core/models';
 import { collection } from '../../core/state/collection';
 import { describeHttpError } from '../../core/ui/http-error';
 import { ToastService } from '../../core/ui/toast.service';
@@ -12,11 +12,16 @@ import { AsyncStateComponent } from '../../shared/components/async-state.compone
 import { ModalComponent } from '../../shared/components/modal.component';
 import { PageHeadComponent } from '../../shared/components/page-head.component';
 import { StatCardComponent } from '../../shared/components/stat-card.component';
+import { TablePagerComponent } from '../../shared/components/table-pager.component';
 import { RippleDirective } from '../../shared/directives/ripple.directive';
 import { normalize } from '../../shared/format';
 import { equipmentStatusLabel, equipmentTypeLabel } from '../../shared/labels';
+import { paginate } from '../../shared/pagination';
 
-/** Inventario de equipos con series y asignacion a cliente. dd_ms_network. */
+type StatusFilter = EquipmentStatus | 'ALL';
+type TypeFilter = EquipmentType | 'ALL';
+
+/** Inventario de equipos con series, edicion, eliminacion y asignacion a cliente. dd_ms_network. */
 @Component({
   selector: 'app-inventory',
   imports: [
@@ -26,6 +31,7 @@ import { equipmentStatusLabel, equipmentTypeLabel } from '../../shared/labels';
     StatCardComponent,
     AsyncStateComponent,
     ModalComponent,
+    TablePagerComponent,
     RippleDirective,
   ],
   templateUrl: './inventory.component.html',
@@ -43,7 +49,12 @@ export class InventoryComponent {
   );
 
   protected readonly search = signal('');
-  protected readonly creating = signal(false);
+  protected readonly statusFilter = signal<StatusFilter>('ALL');
+  protected readonly typeFilter = signal<TypeFilter>('ALL');
+
+  protected readonly modalOpen = signal(false);
+  protected readonly editing = signal<Equipment | null>(null);
+  protected readonly deleting = signal<Equipment | null>(null);
   protected readonly assigning = signal<Equipment | null>(null);
   protected readonly saving = signal(false);
 
@@ -55,11 +66,28 @@ export class InventoryComponent {
     { value: 'OTHER', text: 'Otro' },
   ];
 
+  protected readonly statusOptions: { value: StatusFilter; text: string }[] = [
+    { value: 'ALL', text: 'Todos' },
+    { value: 'IN_STOCK', text: 'En bodega' },
+    { value: 'ASSIGNED', text: 'Asignados' },
+    { value: 'FAULTY', text: 'Averiados' },
+    { value: 'RETIRED', text: 'Dado de baja' },
+  ];
+
+  protected readonly equipmentStatuses: { value: EquipmentStatus; text: string }[] = [
+    { value: 'IN_STOCK', text: 'Disponible en bodega' },
+    { value: 'ASSIGNED', text: 'Asignado a cliente' },
+    { value: 'FAULTY', text: 'Averiado' },
+    { value: 'RETIRED', text: 'Dado de baja' },
+  ];
+
   protected readonly form = this.fb.nonNullable.group({
     type: ['ONT' as EquipmentType, Validators.required],
     brand: [''],
     model: [''],
     serialNumber: ['', Validators.required],
+    status: ['IN_STOCK' as EquipmentStatus, Validators.required],
+    assignedClientId: [''],
   });
 
   protected readonly assignForm = this.fb.nonNullable.group({
@@ -91,15 +119,25 @@ export class InventoryComponent {
 
   protected readonly filtered = computed(() => {
     const term = normalize(this.search());
-    if (!term) {
-      return this.equipment.value();
-    }
-    return this.equipment.value().filter((e) =>
-      [e.serialNumber, e.brand, e.model, this.clientName(e.assignedClientId)]
+    const status = this.statusFilter();
+    const type = this.typeFilter();
+    return this.equipment.value().filter((e) => {
+      if (status !== 'ALL' && e.status !== status) {
+        return false;
+      }
+      if (type !== 'ALL' && e.type !== type) {
+        return false;
+      }
+      if (!term) {
+        return true;
+      }
+      return [e.serialNumber, e.brand, e.model, this.clientName(e.assignedClientId)]
         .map((v) => normalize(v))
-        .some((v) => v.includes(term)),
-    );
+        .some((v) => v.includes(term));
+    });
   });
+
+  protected readonly pager = paginate(this.filtered, 10);
 
   protected clientName(clientId: string | null): string {
     if (!clientId) {
@@ -109,8 +147,33 @@ export class InventoryComponent {
   }
 
   protected openCreate(): void {
-    this.form.reset({ type: 'ONT', brand: '', model: '', serialNumber: '' });
-    this.creating.set(true);
+    this.editing.set(null);
+    this.form.reset({
+      type: 'ONT',
+      brand: '',
+      model: '',
+      serialNumber: '',
+      status: 'IN_STOCK',
+      assignedClientId: '',
+    });
+    this.modalOpen.set(true);
+  }
+
+  protected openEdit(item: Equipment): void {
+    this.editing.set(item);
+    this.form.reset({
+      type: item.type,
+      brand: item.brand ?? '',
+      model: item.model ?? '',
+      serialNumber: item.serialNumber,
+      status: item.status,
+      assignedClientId: item.assignedClientId ?? '',
+    });
+    this.modalOpen.set(true);
+  }
+
+  protected confirmDelete(item: Equipment): void {
+    this.deleting.set(item);
   }
 
   protected openAssign(item: Equipment): void {
@@ -119,7 +182,9 @@ export class InventoryComponent {
   }
 
   protected closeModals(): void {
-    this.creating.set(false);
+    this.modalOpen.set(false);
+    this.editing.set(null);
+    this.deleting.set(null);
     this.assigning.set(null);
   }
 
@@ -129,26 +194,62 @@ export class InventoryComponent {
       return;
     }
     const raw = this.form.getRawValue();
+    const current = this.editing();
     this.saving.set(true);
-    this.api
-      .createEquipment({
-        type: raw.type,
-        brand: raw.brand || null,
-        model: raw.model || null,
-        serialNumber: raw.serialNumber,
-      })
-      .subscribe({
-        next: (item) => {
-          this.saving.set(false);
-          this.creating.set(false);
-          this.toast.success(`Equipo ${item.serialNumber} ingresado a bodega.`);
-          this.equipment.reload();
-        },
-        error: (err: unknown) => {
-          this.saving.set(false);
-          this.toast.error(describeHttpError(err));
-        },
-      });
+
+    const request$ = current
+      ? this.api.updateEquipment(current.id, {
+          type: raw.type,
+          brand: raw.brand.trim() || null,
+          model: raw.model.trim() || null,
+          serialNumber: raw.serialNumber.trim(),
+          status: raw.status,
+          assignedClientId: raw.status === 'ASSIGNED' ? raw.assignedClientId || null : null,
+        })
+      : this.api.createEquipment({
+          type: raw.type,
+          brand: raw.brand.trim() || null,
+          model: raw.model.trim() || null,
+          serialNumber: raw.serialNumber.trim(),
+        });
+
+    request$.subscribe({
+      next: (item) => {
+        this.saving.set(false);
+        this.modalOpen.set(false);
+        this.editing.set(null);
+        this.toast.success(
+          current
+            ? `Equipo ${item.serialNumber} actualizado.`
+            : `Equipo ${item.serialNumber} ingresado a bodega.`,
+        );
+        this.equipment.reload();
+      },
+      error: (err: unknown) => {
+        this.saving.set(false);
+        this.toast.error(describeHttpError(err));
+      },
+    });
+  }
+
+  protected removeEquipment(): void {
+    const item = this.deleting();
+    if (!item || this.saving()) {
+      return;
+    }
+    this.saving.set(true);
+    this.api.deleteEquipment(item.id).subscribe({
+      next: () => {
+        this.saving.set(false);
+        this.deleting.set(null);
+        this.toast.success(`Equipo ${item.serialNumber} eliminado.`);
+        this.equipment.reload();
+      },
+      error: (err: unknown) => {
+        this.saving.set(false);
+        this.toast.error(describeHttpError(err));
+      },
+    });
   }
 
   protected assign(): void {

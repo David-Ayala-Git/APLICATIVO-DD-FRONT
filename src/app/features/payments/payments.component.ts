@@ -4,7 +4,7 @@ import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { catchError, of } from 'rxjs';
 
 import { BillingApi, CrmApi } from '../../core/api';
-import { Client, Invoice, Payment, PaymentMethod } from '../../core/models';
+import { Client, Invoice, Payment, PaymentMethod, PaymentStatus } from '../../core/models';
 import { collection } from '../../core/state/collection';
 import { TenantService } from '../../core/state/tenant.service';
 import { describeHttpError } from '../../core/ui/http-error';
@@ -13,9 +13,11 @@ import { AsyncStateComponent } from '../../shared/components/async-state.compone
 import { ModalComponent } from '../../shared/components/modal.component';
 import { PageHeadComponent } from '../../shared/components/page-head.component';
 import { StatCardComponent } from '../../shared/components/stat-card.component';
+import { TablePagerComponent } from '../../shared/components/table-pager.component';
 import { RippleDirective } from '../../shared/directives/ripple.directive';
 import { cop, copCompact, initials, normalize, percent } from '../../shared/format';
 import { invoiceStatusLabel, paymentMethodLabel, paymentStatusLabel } from '../../shared/labels';
+import { paginate } from '../../shared/pagination';
 
 const METHODS: PaymentMethod[] = ['MANUAL', 'PSE', 'WOMPI', 'NEQUI'];
 
@@ -39,10 +41,12 @@ interface PayableInvoice {
   client: Client;
 }
 
+type StatusFilter = PaymentStatus | 'ALL';
+type MethodFilter = PaymentMethod | 'ALL';
+
 /**
- * Pagos recibidos y conciliacion, mas el registro manual de un pago (efectivo
- * o Nequi confirmado a mano) por POST /api/payments/manual. Las pasarelas
- * (Wompi/PSE) confirman por su propio webhook firmado, que no se usa desde aqui.
+ * Pagos recibidos y conciliacion, registro manual, edicion y eliminacion
+ * sincronizando el estado de la factura asociada.
  */
 @Component({
   selector: 'app-payments',
@@ -53,6 +57,7 @@ interface PayableInvoice {
     StatCardComponent,
     AsyncStateComponent,
     ModalComponent,
+    TablePagerComponent,
     RippleDirective,
   ],
   templateUrl: './payments.component.html',
@@ -81,8 +86,31 @@ export class PaymentsComponent {
   );
 
   protected readonly manualMethods = MANUAL_METHODS;
+  protected readonly allMethods: { value: PaymentMethod; text: string }[] = [
+    { value: 'MANUAL', text: 'Manual / efectivo' },
+    { value: 'NEQUI', text: 'Nequi' },
+    { value: 'PSE', text: 'PSE' },
+    { value: 'WOMPI', text: 'Wompi' },
+  ];
+  protected readonly statusOptions: { value: StatusFilter; text: string }[] = [
+    { value: 'ALL', text: 'Todos' },
+    { value: 'CONFIRMED', text: 'Confirmados' },
+    { value: 'PENDING', text: 'En proceso' },
+    { value: 'FAILED', text: 'Rechazados' },
+  ];
+  protected readonly editableStatuses: { value: PaymentStatus; text: string }[] = [
+    { value: 'CONFIRMED', text: 'Confirmado' },
+    { value: 'PENDING', text: 'En proceso' },
+    { value: 'FAILED', text: 'Rechazado' },
+  ];
+
+  protected readonly tableSearch = signal('');
+  protected readonly statusFilter = signal<StatusFilter>('ALL');
+  protected readonly methodFilter = signal<MethodFilter>('ALL');
 
   protected readonly registering = signal(false);
+  protected readonly editing = signal<Payment | null>(null);
+  protected readonly deleting = signal<Payment | null>(null);
   protected readonly selectedInvoiceId = signal<string | null>(null);
   protected readonly search = signal('');
   protected readonly saving = signal(false);
@@ -93,12 +121,13 @@ export class PaymentsComponent {
     externalReference: ['', Validators.required],
   });
 
-  /**
-   * Espejo en senal del metodo elegido. `computed()` solo se invalida cuando
-   * lee una senal: el valor de un FormControl no lo es, asi que sin esto el
-   * placeholder de "Referencia" se quedaria pegado en el primer metodo
-   * elegido. La sincroniza el (change) del select en el template.
-   */
+  protected readonly editForm = this.fb.nonNullable.group({
+    method: ['MANUAL' as PaymentMethod, Validators.required],
+    amount: [0, [Validators.required, Validators.min(1)]],
+    status: ['CONFIRMED' as PaymentStatus, Validators.required],
+    externalReference: ['', Validators.required],
+  });
+
   protected readonly methodValue = signal<PaymentMethod>('MANUAL');
 
   protected readonly stats = computed(() => {
@@ -130,16 +159,30 @@ export class PaymentsComponent {
     }).sort((a, b) => b.amount - a.amount);
   });
 
-  protected readonly recent = computed(() =>
-    [...this.payments.value()].sort((a, b) => ((a.paidAt ?? '') < (b.paidAt ?? '') ? 1 : -1)),
-  );
+  protected readonly recent = computed(() => {
+    const term = normalize(this.tableSearch());
+    const status = this.statusFilter();
+    const method = this.methodFilter();
+    return [...this.payments.value()]
+      .filter((p) => {
+        if (status !== 'ALL' && p.status !== status) {
+          return false;
+        }
+        if (method !== 'ALL' && p.method !== method) {
+          return false;
+        }
+        if (!term) {
+          return true;
+        }
+        return [p.externalReference, this.clientOf(p), this.periodOf(p)]
+          .map((v) => normalize(v))
+          .some((v) => v.includes(term));
+      })
+      .sort((a, b) => ((a.paidAt ?? '') < (b.paidAt ?? '') ? 1 : -1));
+  });
 
-  /**
-   * Clientes con una factura PENDIENTE u OVERDUE: el universo de "disponibles
-   * para este periodo, pendientes de pagar" que puede recibir un pago manual.
-   * Las PAID y CANCELLED quedan fuera porque el backend ya no las deja volver
-   * a procesar (InvoiceValidator.validateNotPaid).
-   */
+  protected readonly pager = paginate(this.recent, 10);
+
   protected readonly payable = computed<PayableInvoice[]>(() => {
     const clientsById = new Map(this.clients.value().map((c) => [c.id, c]));
     return this.invoices
@@ -151,7 +194,6 @@ export class PaymentsComponent {
       })
       .filter((row): row is PayableInvoice => row !== null)
       .sort((a, b) => {
-        // primero lo mas vencido, luego lo mas proximo a vencer
         if (a.invoice.status !== b.invoice.status) {
           return a.invoice.status === 'OVERDUE' ? -1 : 1;
         }
@@ -201,6 +243,20 @@ export class PaymentsComponent {
     this.registering.set(true);
   }
 
+  protected openEdit(payment: Payment): void {
+    this.editing.set(payment);
+    this.editForm.reset({
+      method: payment.method,
+      amount: Number(payment.amount),
+      status: payment.status,
+      externalReference: payment.externalReference ?? '',
+    });
+  }
+
+  protected confirmDelete(payment: Payment): void {
+    this.deleting.set(payment);
+  }
+
   protected onMethodChange(method: PaymentMethod): void {
     this.methodValue.set(method);
   }
@@ -212,6 +268,8 @@ export class PaymentsComponent {
 
   protected close(): void {
     this.registering.set(false);
+    this.editing.set(null);
+    this.deleting.set(null);
   }
 
   protected confirmPayment(): void {
@@ -245,6 +303,57 @@ export class PaymentsComponent {
           this.toast.error(describeHttpError(err));
         },
       });
+  }
+
+  protected saveEdit(): void {
+    const current = this.editing();
+    if (!current || this.editForm.invalid || this.saving()) {
+      this.editForm.markAllAsTouched();
+      return;
+    }
+    const raw = this.editForm.getRawValue();
+    this.saving.set(true);
+    this.api
+      .updatePayment(current.id, {
+        method: raw.method,
+        amount: Number(raw.amount),
+        status: raw.status,
+        externalReference: raw.externalReference.trim(),
+      })
+      .subscribe({
+        next: () => {
+          this.saving.set(false);
+          this.editing.set(null);
+          this.toast.success('Pago actualizado y factura sincronizada.');
+          this.payments.reload();
+          this.invoices.reload();
+        },
+        error: (err: unknown) => {
+          this.saving.set(false);
+          this.toast.error(describeHttpError(err));
+        },
+      });
+  }
+
+  protected removePayment(): void {
+    const current = this.deleting();
+    if (!current || this.saving()) {
+      return;
+    }
+    this.saving.set(true);
+    this.api.deletePayment(current.id).subscribe({
+      next: () => {
+        this.saving.set(false);
+        this.deleting.set(null);
+        this.toast.success('Pago eliminado y estado de factura actualizado.');
+        this.payments.reload();
+        this.invoices.reload();
+      },
+      error: (err: unknown) => {
+        this.saving.set(false);
+        this.toast.error(describeHttpError(err));
+      },
+    });
   }
 
   protected reloadAll(): void {

@@ -4,7 +4,7 @@ import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { catchError, of } from 'rxjs';
 
 import { CrmApi } from '../../core/api';
-import { Client, Contract, Plan } from '../../core/models';
+import { Client, Contract, ContractStatus, Plan } from '../../core/models';
 import { collection } from '../../core/state/collection';
 import { describeHttpError } from '../../core/ui/http-error';
 import { ToastService } from '../../core/ui/toast.service';
@@ -13,8 +13,13 @@ import { ModalComponent } from '../../shared/components/modal.component';
 import { PageHeadComponent } from '../../shared/components/page-head.component';
 import { StatCardComponent } from '../../shared/components/stat-card.component';
 import { StatusBadgeComponent } from '../../shared/components/status-badge.component';
+import { TablePagerComponent } from '../../shared/components/table-pager.component';
 import { RippleDirective } from '../../shared/directives/ripple.directive';
+import { normalize } from '../../shared/format';
 import { contractStatusLabel } from '../../shared/labels';
+import { paginate } from '../../shared/pagination';
+
+type StatusFilter = ContractStatus | 'ALL';
 
 /** Contratos del cliente y firma. dd_ms_crm. */
 @Component({
@@ -27,6 +32,7 @@ import { contractStatusLabel } from '../../shared/labels';
     StatusBadgeComponent,
     AsyncStateComponent,
     ModalComponent,
+    TablePagerComponent,
     RippleDirective,
   ],
   templateUrl: './contracts.component.html',
@@ -46,9 +52,18 @@ export class ContractsComponent {
     [] as Plan[],
   );
 
+  protected readonly search = signal('');
+  protected readonly statusFilter = signal<StatusFilter>('ALL');
   protected readonly creating = signal(false);
   protected readonly saving = signal(false);
   protected readonly signingId = signal<string | null>(null);
+
+  protected readonly statusOptions: { value: StatusFilter; text: string }[] = [
+    { value: 'ALL', text: 'Todos' },
+    { value: 'DRAFT', text: 'Esperando firma' },
+    { value: 'SIGNED', text: 'Firmados' },
+    { value: 'CANCELLED', text: 'Anulados' },
+  ];
 
   protected readonly form = this.fb.nonNullable.group({
     clientId: ['', Validators.required],
@@ -66,14 +81,29 @@ export class ContractsComponent {
     };
   });
 
-  protected readonly rows = computed(() =>
-    [...this.contracts.value()].sort((a, b) => {
-      // primero lo que espera firma: es la cola de trabajo real
-      const weight = (status: string) => (status === 'DRAFT' ? 0 : status === 'SIGNED' ? 1 : 2);
-      const diff = weight(a.status) - weight(b.status);
-      return diff !== 0 ? diff : a.createdAt < b.createdAt ? 1 : -1;
-    }),
-  );
+  protected readonly rows = computed(() => {
+    const term = normalize(this.search());
+    const status = this.statusFilter();
+    return [...this.contracts.value()]
+      .filter((c) => {
+        if (status !== 'ALL' && c.status !== status) {
+          return false;
+        }
+        if (!term) {
+          return true;
+        }
+        return [this.clientName(c.clientId), this.planName(c.planId)]
+          .map((v) => normalize(v))
+          .some((v) => v.includes(term));
+      })
+      .sort((a, b) => {
+        const weight = (s: string) => (s === 'DRAFT' ? 0 : s === 'SIGNED' ? 1 : 2);
+        const diff = weight(a.status) - weight(b.status);
+        return diff !== 0 ? diff : a.createdAt < b.createdAt ? 1 : -1;
+      });
+  });
+
+  protected readonly pager = paginate(this.rows, 10);
 
   protected clientName(clientId: string): string {
     return this.clients.value().find((c) => c.id === clientId)?.fullName ?? 'Cliente';

@@ -52,9 +52,9 @@
     <i class="fas fa-circle-info"></i>
     <span>
       Los pagos de Wompi y PSE siguen llegando solos por el webhook de la pasarela
-      (<span class="mono">POST /api/payments/webhook</span>) y esta pantalla no los toca. Para
-      efectivo o una transferencia Nequi que confirmaste por fuera de la consola, usa
-      <b>Registrar pago manual</b>: busca la factura pendiente del cliente y la marca como pagada.
+      (<span class="mono">POST /api/payments/webhook</span>). Para efectivo o una transferencia
+      Nequi confirmada por fuera de la consola, usa <b>Registrar pago manual</b>. Tambien puedes
+      editar o eliminar pagos registrados; el estado de la factura se sincroniza automaticamente.
     </span>
   </div>
 
@@ -90,10 +90,43 @@
 
     <div class="card">
       <div class="card-header">
-        <h3>Pagos recientes</h3>
-        @if (stats().failed === 0 && stats().pending === 0 && stats().total > 0) {
-          <span class="badge badge-success"><i class="fas fa-circle"></i> Todo conciliado</span>
-        }
+        <div class="topbar-search">
+          <i class="fas fa-search"></i>
+          <input
+            placeholder="Referencia, cliente o periodo…"
+            [value]="tableSearch()"
+            (input)="tableSearch.set($any($event.target).value)"
+            aria-label="Buscar pago"
+          />
+        </div>
+
+        <div class="row-wrap">
+          <select
+            class="form-control"
+            style="width: auto; padding: 0.4rem 2.2rem 0.4rem 0.7rem; font-size: 0.8rem"
+            [value]="methodFilter()"
+            (change)="methodFilter.set($any($event.target).value)"
+            aria-label="Filtrar por metodo"
+          >
+            <option value="ALL">Todos los metodos</option>
+            @for (m of allMethods; track m.value) {
+              <option [value]="m.value">{{ m.text }}</option>
+            }
+          </select>
+
+          @for (opt of statusOptions; track opt.value) {
+            <button
+              type="button"
+              class="badge"
+              [class.badge-violet]="statusFilter() === opt.value"
+              [class.badge-gray]="statusFilter() !== opt.value"
+              style="cursor: pointer; border: none; font-family: inherit"
+              (click)="statusFilter.set(opt.value)"
+            >
+              {{ opt.text }}
+            </button>
+          }
+        </div>
       </div>
 
       <app-async-state
@@ -101,8 +134,8 @@
         [error]="payments.error()"
         [empty]="recent().length === 0"
         emptyIcon="fas fa-credit-card"
-        emptyTitle="Sin pagos registrados"
-        emptyText="Aun no ha llegado ningun pago desde la pasarela."
+        emptyTitle="Sin pagos que coincidan"
+        emptyText="Aun no hay pagos registrados o ninguno coincide con el filtro."
         (retry)="payments.reload()"
       />
 
@@ -118,10 +151,11 @@
                 <th>Valor</th>
                 <th>Estado</th>
                 <th>Fecha</th>
+                <th></th>
               </tr>
             </thead>
             <tbody>
-              @for (payment of recent(); track payment.id) {
+              @for (payment of pager.items(); track payment.id) {
                 <tr>
                   <td class="cell-mono">{{ payment.externalReference || '—' }}</td>
                   <td class="cell-main">{{ clientOf(payment) }}</td>
@@ -132,11 +166,31 @@
                   <td class="cell-sub">
                     {{ payment.paidAt ? (payment.paidAt | date: 'dd/MM/yyyy HH:mm') : '—' }}
                   </td>
+                  <td class="actions">
+                    <button
+                      type="button"
+                      class="btn btn-ghost btn-icon"
+                      title="Editar pago"
+                      (click)="openEdit(payment)"
+                    >
+                      <i class="fas fa-pen"></i>
+                    </button>
+                    <button
+                      type="button"
+                      class="btn btn-ghost btn-icon"
+                      style="color: var(--danger)"
+                      title="Eliminar pago"
+                      (click)="confirmDelete(payment)"
+                    >
+                      <i class="fas fa-trash"></i>
+                    </button>
+                  </td>
                 </tr>
               }
             </tbody>
           </table>
         </div>
+        <app-table-pager [pager]="pager" />
       }
     </div>
   </div>
@@ -284,9 +338,7 @@
         </div>
 
         <p class="hint">
-          Al confirmar, la factura queda <b>PAGADA</b> en su totalidad: el sistema todavia no
-          maneja abonos parciales, asi que si el valor recibido no coincide con el total de la
-          factura, revisalo con cartera antes de continuar.
+          Al confirmar, la factura queda <b>PAGADA</b> en su totalidad.
         </p>
       </form>
     }
@@ -305,6 +357,93 @@
           Registrando…
         } @else {
           <i class="fas fa-check"></i> Confirmar pago
+        }
+      </button>
+    </ng-container>
+  </app-modal>
+}
+
+@if (editing(); as pay) {
+  <app-modal title="Editar pago" (close)="close()">
+    <form [formGroup]="editForm" (ngSubmit)="saveEdit()" id="edit-payment-form">
+      <div class="alert alert-info" style="margin-bottom: 1rem">
+        <i class="fas fa-circle-info"></i>
+        <span>
+          Pago de <b>{{ clientOf(pay) }}</b> · periodo <b class="mono">{{ periodOf(pay) }}</b>.
+          Si cambias el estado, la factura asociada se sincronizara automaticamente.
+        </span>
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label for="ep-method">Metodo de pago</label>
+          <select id="ep-method" class="form-control" formControlName="method">
+            @for (m of allMethods; track m.value) {
+              <option [value]="m.value">{{ m.text }}</option>
+            }
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="ep-status">Estado</label>
+          <select id="ep-status" class="form-control" formControlName="status">
+            @for (st of editableStatuses; track st.value) {
+              <option [value]="st.value">{{ st.text }}</option>
+            }
+          </select>
+        </div>
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label for="ep-amount">Valor (COP)</label>
+          <input id="ep-amount" class="form-control mono" type="number" min="1" formControlName="amount" />
+          @if (editForm.controls.amount.touched && editForm.controls.amount.invalid) {
+            <div class="field-error">El valor debe ser mayor que cero.</div>
+          }
+        </div>
+        <div class="form-group">
+          <label for="ep-ref">Referencia</label>
+          <input id="ep-ref" class="form-control" formControlName="externalReference" />
+          @if (editForm.controls.externalReference.touched && editForm.controls.externalReference.invalid) {
+            <div class="field-error">La referencia es obligatoria.</div>
+          }
+        </div>
+      </div>
+    </form>
+
+    <ng-container modalFooter>
+      <button type="button" class="btn btn-outline" (click)="close()">Cancelar</button>
+      <button appRipple type="submit" form="edit-payment-form" class="btn btn-grad" [disabled]="saving()">
+        @if (saving()) {
+          <i class="fas fa-circle-notch" style="animation: spinSlow 1s linear infinite"></i>
+          Guardando…
+        } @else {
+          <i class="fas fa-check"></i> Guardar cambios
+        }
+      </button>
+    </ng-container>
+  </app-modal>
+}
+
+@if (deleting(); as pay) {
+  <app-modal title="Eliminar pago" (close)="close()">
+    <div class="alert alert-danger">
+      <i class="fas fa-triangle-exclamation"></i>
+      <span>
+        Vas a eliminar el pago de <b>{{ clientOf(pay) }}</b> por <b>{{ cop(pay.amount) }}</b>
+        (ref. <span class="mono">{{ pay.externalReference || 'sin ref' }}</span>). Si la factura no
+        tiene otro pago confirmado, volvera a quedar pendiente o vencida.
+      </span>
+    </div>
+
+    <ng-container modalFooter>
+      <button type="button" class="btn btn-outline" (click)="close()">Cancelar</button>
+      <button appRipple type="button" class="btn btn-danger" [disabled]="saving()" (click)="removePayment()">
+        @if (saving()) {
+          <i class="fas fa-circle-notch" style="animation: spinSlow 1s linear infinite"></i>
+          Eliminando…
+        } @else {
+          <i class="fas fa-trash"></i> Eliminar pago
         }
       </button>
     </ng-container>

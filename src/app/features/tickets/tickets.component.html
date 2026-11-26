@@ -1,7 +1,7 @@
 <div class="page">
   <app-page-head
     title="Mesa de ayuda"
-    subtitle="Tickets de soporte con SLA, prioridad y asignacion a la cuadrilla"
+    subtitle="Tickets de soporte con SLA, prioridad, control de tiempos y asignacion a la cuadrilla"
   >
     <button
       appRipple
@@ -54,6 +54,19 @@
         />
       </div>
       <div class="row-wrap">
+        <select
+          class="form-control"
+          style="width: auto; padding: 0.4rem 2.2rem 0.4rem 0.7rem; font-size: 0.8rem"
+          [value]="priorityFilter()"
+          (change)="priorityFilter.set($any($event.target).value)"
+          aria-label="Filtrar por prioridad"
+        >
+          <option value="ALL">Todas las prioridades</option>
+          @for (p of priorities; track p.value) {
+            <option [value]="p.value">{{ p.text }}</option>
+          }
+        </select>
+
         @for (opt of statusOptions; track opt.value) {
           <button
             type="button"
@@ -88,13 +101,14 @@
               <th>Cliente</th>
               <th>Asignado</th>
               <th>SLA</th>
+              <th>Tiempos de atencion</th>
               <th>Prioridad</th>
               <th>Estado</th>
               <th></th>
             </tr>
           </thead>
           <tbody>
-            @for (ticket of filtered(); track ticket.id) {
+            @for (ticket of pager.items(); track ticket.id) {
               <tr>
                 <td>
                   <div class="cell-main">{{ ticket.reason }}</div>
@@ -118,10 +132,29 @@
                     {{ sla(ticket.slaDueAt).text }}
                   </span>
                 </td>
+                <td>
+                  @if (ticket.startedAt) {
+                    <div class="cell-sub">
+                      <i class="fas fa-play" style="color: var(--success); margin-right: 0.25rem"></i>
+                      {{ ticket.startedAt | date: 'dd/MM HH:mm' }}
+                    </div>
+                    @if (ticket.finishedAt) {
+                      <div class="cell-sub">
+                        <i class="fas fa-flag-checkered" style="color: var(--brand-1); margin-right: 0.25rem"></i>
+                        {{ ticket.finishedAt | date: 'dd/MM HH:mm' }}
+                        · <b>{{ durationLabel(ticket.startedAt, ticket.finishedAt) }}</b>
+                      </div>
+                    } @else {
+                      <span class="badge badge-info">En atencion</span>
+                    }
+                  } @else {
+                    <span class="cell-sub">Sin iniciar</span>
+                  }
+                </td>
                 <td><app-status-badge [label]="priorityLabel(ticket.priority)" /></td>
                 <td><span class="badge {{ statusLabel(ticket.status).badge }}">{{ statusLabel(ticket.status).text }}</span></td>
                 <td class="actions">
-                  @if (ticket.status === 'OPEN' || ticket.status === 'IN_PROGRESS') {
+                  @if (ticket.status === 'OPEN') {
                     <button
                       type="button"
                       class="btn btn-ghost btn-icon"
@@ -132,12 +165,57 @@
                     </button>
                     <button
                       type="button"
-                      class="btn btn-ghost btn-icon"
-                      title="Marcar resuelto"
+                      class="btn btn-outline btn-sm"
                       [disabled]="busyId() === ticket.id"
+                      title="Iniciar atencion del ticket"
+                      (click)="startTicket(ticket)"
+                    >
+                      <i class="fas fa-play"></i> Iniciar
+                    </button>
+                  } @else if (ticket.status === 'IN_PROGRESS') {
+                    <button
+                      type="button"
+                      class="btn btn-ghost btn-icon"
+                      title="Reasignar tecnico"
+                      (click)="openAssign(ticket)"
+                    >
+                      <i class="fas fa-user-gear"></i>
+                    </button>
+
+                    @if (!ticket.startedAt) {
+                      <button
+                        type="button"
+                        class="btn btn-accent btn-sm"
+                        [disabled]="busyId() === ticket.id"
+                        (click)="startTicket(ticket)"
+                      >
+                        <i class="fas fa-play"></i> Iniciar ticket
+                      </button>
+                    } @else if (!ticket.finishedAt) {
+                      <button
+                        type="button"
+                        class="btn btn-outline btn-sm"
+                        [disabled]="busyId() === ticket.id"
+                        (click)="finishTicket(ticket)"
+                      >
+                        <i class="fas fa-stop"></i> Terminar ticket
+                      </button>
+                    }
+
+                    <button
+                      type="button"
+                      class="btn btn-sm"
+                      [class.btn-grad]="canResolve(ticket)"
+                      [class.btn-outline]="!canResolve(ticket)"
+                      [disabled]="!canResolve(ticket) || busyId() === ticket.id"
+                      [title]="
+                        canResolve(ticket)
+                          ? 'Marcar resuelto'
+                          : 'Primero debes pulsar Terminar ticket'
+                      "
                       (click)="resolve(ticket)"
                     >
-                      <i class="fas fa-check"></i>
+                      <i class="fas fa-check"></i> Marcar resuelto
                     </button>
                   } @else if (ticket.status === 'RESOLVED') {
                     <button
@@ -155,6 +233,7 @@
           </tbody>
         </table>
       </div>
+      <app-table-pager [pager]="pager" />
     }
   </div>
 </div>

@@ -16,6 +16,8 @@ import {
   QueueLimitRequest,
   RegisterOnuRequest,
   SignalUpdateRequest,
+  UpdateEquipmentRequest,
+  UpdateNodeRequest,
 } from '../models';
 import { API } from './api.config';
 
@@ -76,6 +78,14 @@ export class NetworkApi {
     return this.http.post<NetworkNode>(API.network.nodes, body);
   }
 
+  updateNode(id: string, body: UpdateNodeRequest): Observable<NetworkNode> {
+    return this.http.put<NetworkNode>(`${API.network.nodes}/${id}`, body);
+  }
+
+  deleteNode(id: string): Observable<void> {
+    return this.http.delete<void>(`${API.network.nodes}/${id}`);
+  }
+
   // ---------- Inventario ----------
 
   equipment(): Observable<Equipment[]> {
@@ -84,6 +94,14 @@ export class NetworkApi {
 
   createEquipment(body: CreateEquipmentRequest): Observable<Equipment> {
     return this.http.post<Equipment>(API.network.equipment, body);
+  }
+
+  updateEquipment(id: string, body: UpdateEquipmentRequest): Observable<Equipment> {
+    return this.http.put<Equipment>(`${API.network.equipment}/${id}`, body);
+  }
+
+  deleteEquipment(id: string): Observable<void> {
+    return this.http.delete<void>(`${API.network.equipment}/${id}`);
   }
 
   assignEquipment(id: string, body: AssignEquipmentRequest): Observable<Equipment> {

@@ -10,6 +10,7 @@ import {
   Technician,
   Ticket,
   UpdateTechnicianStatusRequest,
+  UpdateWorkOrderRequest,
   WorkOrder,
 } from '../models';
 import { API } from './api.config';
@@ -31,6 +32,14 @@ export class SupportApi {
 
   assignTicket(id: string, body: AssignTicketRequest): Observable<Ticket> {
     return this.http.post<Ticket>(`${API.support.tickets}/${id}/assign`, body);
+  }
+
+  startTicket(id: string): Observable<Ticket> {
+    return this.http.post<Ticket>(`${API.support.tickets}/${id}/start`, {});
+  }
+
+  finishTicket(id: string): Observable<Ticket> {
+    return this.http.post<Ticket>(`${API.support.tickets}/${id}/finish`, {});
   }
 
   resolveTicket(id: string): Observable<Ticket> {
@@ -63,6 +72,22 @@ export class SupportApi {
 
   createWorkOrder(body: CreateWorkOrderRequest): Observable<WorkOrder> {
     return this.http.post<WorkOrder>(API.support.workOrders, body);
+  }
+
+  updateWorkOrder(id: string, body: UpdateWorkOrderRequest): Observable<WorkOrder> {
+    return this.http.put<WorkOrder>(`${API.support.workOrders}/${id}`, body);
+  }
+
+  deleteWorkOrder(id: string): Observable<void> {
+    return this.http.delete<void>(`${API.support.workOrders}/${id}`);
+  }
+
+  startWorkOrder(id: string): Observable<WorkOrder> {
+    return this.http.post<WorkOrder>(`${API.support.workOrders}/${id}/start`, {});
+  }
+
+  finishWorkOrder(id: string): Observable<WorkOrder> {
+    return this.http.post<WorkOrder>(`${API.support.workOrders}/${id}/finish`, {});
   }
 
   completeWorkOrder(id: string): Observable<WorkOrder> {

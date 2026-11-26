@@ -47,10 +47,29 @@
 
   <div class="card">
     <div class="card-header">
-      <h3>Expediente de contratos</h3>
-      @if (stats().draft > 0) {
-        <span class="badge badge-warning">{{ stats().draft }} pendiente(s) de firma</span>
-      }
+      <div class="topbar-search">
+        <i class="fas fa-search"></i>
+        <input
+          placeholder="Buscar por cliente o plan…"
+          [value]="search()"
+          (input)="search.set($any($event.target).value)"
+          aria-label="Buscar contrato"
+        />
+      </div>
+      <div class="row-wrap">
+        @for (opt of statusOptions; track opt.value) {
+          <button
+            type="button"
+            class="badge"
+            [class.badge-violet]="statusFilter() === opt.value"
+            [class.badge-gray]="statusFilter() !== opt.value"
+            style="cursor: pointer; border: none; font-family: inherit"
+            (click)="statusFilter.set(opt.value)"
+          >
+            {{ opt.text }}
+          </button>
+        }
+      </div>
     </div>
 
     <app-async-state
@@ -58,8 +77,8 @@
       [error]="contracts.error()"
       [empty]="rows().length === 0"
       emptyIcon="fas fa-file-signature"
-      emptyTitle="Sin contratos registrados"
-      emptyText="Crea el contrato del cliente para dejar constancia del plan y la permanencia."
+      emptyTitle="Sin contratos que coincidan"
+      emptyText="Crea el contrato del cliente o ajusta los filtros."
       (retry)="contracts.reload()"
     />
 
@@ -77,7 +96,7 @@
             </tr>
           </thead>
           <tbody>
-            @for (contract of rows(); track contract.id) {
+            @for (contract of pager.items(); track contract.id) {
               <tr>
                 <td>
                   <i class="fas fa-file-contract" style="color: var(--brand-1); margin-right: 0.5rem"></i>
@@ -121,6 +140,7 @@
           </tbody>
         </table>
       </div>
+      <app-table-pager [pager]="pager" />
     }
   </div>
 </div>

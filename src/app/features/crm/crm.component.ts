@@ -13,9 +13,11 @@ import { ModalComponent } from '../../shared/components/modal.component';
 import { PageHeadComponent } from '../../shared/components/page-head.component';
 import { StatCardComponent } from '../../shared/components/stat-card.component';
 import { StatusBadgeComponent } from '../../shared/components/status-badge.component';
+import { TablePagerComponent } from '../../shared/components/table-pager.component';
 import { RippleDirective } from '../../shared/directives/ripple.directive';
 import { initials, normalize } from '../../shared/format';
 import { clientStatusLabel, technologyLabel } from '../../shared/labels';
+import { paginate } from '../../shared/pagination';
 
 type StatusFilter = ClientStatus | 'ALL';
 
@@ -29,6 +31,7 @@ type StatusFilter = ClientStatus | 'ALL';
     StatusBadgeComponent,
     AsyncStateComponent,
     ModalComponent,
+    TablePagerComponent,
     RippleDirective,
   ],
   templateUrl: './crm.component.html',
@@ -52,6 +55,8 @@ export class CrmComponent {
   protected readonly saving = signal(false);
   /** null = modal cerrado; un cliente = edicion; 'new' = alta. */
   protected readonly editing = signal<Client | 'new' | null>(null);
+  protected readonly codeMode = signal<'auto' | 'manual'>('auto');
+  protected readonly nextAutoCode = signal('0001');
 
   protected readonly statusOptions: { value: StatusFilter; text: string }[] = [
     { value: 'ALL', text: 'Todos' },
@@ -61,6 +66,7 @@ export class CrmComponent {
   ];
 
   protected readonly form = this.fb.nonNullable.group({
+    clientCode: ['', [Validators.pattern(/^(\d{1,16})?$/)]],
     fullName: ['', Validators.required],
     document: ['', Validators.required],
     phone: [''],
@@ -83,6 +89,13 @@ export class CrmComponent {
     };
   });
 
+  /** Planes disponibles para asignar (los habilitados + el actual del cliente en edicion). */
+  protected readonly availablePlans = computed(() => {
+    const current = this.editing();
+    const assignedId = current && current !== 'new' ? current.planId : null;
+    return this.plans.value().filter((p) => p.enabled !== false || p.id === assignedId);
+  });
+
   protected readonly filtered = computed(() => {
     const term = normalize(this.search());
     const status = this.statusFilter();
@@ -93,11 +106,13 @@ export class CrmComponent {
       if (!term) {
         return true;
       }
-      return [c.fullName, c.document, c.ipAddress, c.onuSerial, c.address, c.phone]
+      return [c.clientCode, c.fullName, c.document, c.ipAddress, c.onuSerial, c.address, c.phone]
         .map((v) => normalize(v))
         .some((v) => v.includes(term));
     });
   });
+
+  protected readonly pager = paginate(this.filtered, 10);
 
   protected planName(planId: string | null): string {
     return this.plans.value().find((p) => p.id === planId)?.name ?? 'Sin plan';
@@ -111,8 +126,38 @@ export class CrmComponent {
   protected statusLabel = clientStatusLabel;
   protected initials = initials;
 
+  protected setCodeMode(mode: 'auto' | 'manual'): void {
+    this.codeMode.set(mode);
+    if (mode === 'auto') {
+      this.form.controls.clientCode.setValue(this.nextAutoCode());
+      this.form.controls.clientCode.clearValidators();
+    } else {
+      this.form.controls.clientCode.setValue('');
+      this.form.controls.clientCode.setValidators([
+        Validators.required,
+        Validators.pattern(/^\d{1,16}$/),
+      ]);
+    }
+    this.form.controls.clientCode.updateValueAndValidity();
+  }
+
+  private computeLocalNextCode(): string {
+    let max = 0;
+    for (const c of this.clients.value()) {
+      if (c.clientCode && /^\d+$/.test(c.clientCode)) {
+        const n = Number(c.clientCode);
+        if (n > max) max = n;
+      }
+    }
+    return String(max + 1).padStart(4, '0');
+  }
+
   protected openCreate(): void {
+    const fallbackNext = this.computeLocalNextCode();
+    this.nextAutoCode.set(fallbackNext);
+    this.codeMode.set('auto');
     this.form.reset({
+      clientCode: fallbackNext,
       fullName: '',
       document: '',
       phone: '',
@@ -124,12 +169,26 @@ export class CrmComponent {
       routerId: '',
       pppoeUser: '',
     });
+    this.form.controls.clientCode.clearValidators();
+    this.form.controls.clientCode.updateValueAndValidity();
     this.form.controls.document.enable();
     this.editing.set('new');
+
+    this.api
+      .nextClientCode()
+      .pipe(catchError(() => of({ nextCode: fallbackNext })))
+      .subscribe(({ nextCode }) => {
+        this.nextAutoCode.set(nextCode);
+        if (this.editing() === 'new' && this.codeMode() === 'auto') {
+          this.form.controls.clientCode.setValue(nextCode);
+        }
+      });
   }
 
   protected openEdit(client: Client): void {
+    this.codeMode.set('manual');
     this.form.reset({
+      clientCode: client.clientCode ?? '',
       fullName: client.fullName,
       document: client.document,
       phone: client.phone ?? '',
@@ -141,6 +200,8 @@ export class CrmComponent {
       routerId: client.routerId ?? '',
       pppoeUser: client.pppoeUser ?? '',
     });
+    this.form.controls.clientCode.setValidators([Validators.pattern(/^(\d{1,16})?$/)]);
+    this.form.controls.clientCode.updateValueAndValidity();
     // el documento es la identidad del cliente: no se cambia desde la edicion
     this.form.controls.document.disable();
     this.editing.set(client);
@@ -158,12 +219,29 @@ export class CrmComponent {
     }
 
     const raw = this.form.getRawValue();
+    const manualCode = raw.clientCode.trim();
+    if ((target === 'new' && this.codeMode() === 'manual') || (target !== 'new' && manualCode)) {
+      const normalized = String(Number(manualCode)).padStart(4, '0');
+      if (Number(manualCode) < 1) {
+        this.toast.error('El codigo del cliente debe empezar desde 0001.');
+        return;
+      }
+      const duplicate = this.clients
+        .value()
+        .some((c) => c.clientCode === normalized && (target === 'new' || c.id !== target.id));
+      if (duplicate) {
+        this.toast.error(`Ya existe un cliente con el codigo ${normalized}.`);
+        return;
+      }
+    }
+
     const planId = raw.planId || null;
     this.saving.set(true);
 
     const request$ =
       target === 'new'
         ? this.api.createClient({
+            clientCode: this.codeMode() === 'manual' ? manualCode : null,
             fullName: raw.fullName,
             document: raw.document,
             phone: raw.phone || null,
@@ -171,6 +249,7 @@ export class CrmComponent {
             planId,
           })
         : this.api.updateClient(target.id, {
+            clientCode: manualCode || null,
             fullName: raw.fullName,
             phone: raw.phone || null,
             address: raw.address || null,

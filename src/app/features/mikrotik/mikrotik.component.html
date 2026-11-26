@@ -49,21 +49,42 @@
   <div class="grid-2">
     <div class="card">
       <div class="card-header">
-        <h3>Routers registrados</h3>
-        <span class="badge badge-info">RouterOS API</span>
+        <div class="topbar-search">
+          <i class="fas fa-search"></i>
+          <input
+            placeholder="Router, IP, usuario o modelo…"
+            [value]="search()"
+            (input)="search.set($any($event.target).value)"
+            aria-label="Buscar router"
+          />
+        </div>
+        <div class="row-wrap">
+          @for (opt of statusOptions; track opt.value) {
+            <button
+              type="button"
+              class="badge"
+              [class.badge-violet]="statusFilter() === opt.value"
+              [class.badge-gray]="statusFilter() !== opt.value"
+              style="cursor: pointer; border: none; font-family: inherit"
+              (click)="statusFilter.set(opt.value)"
+            >
+              {{ opt.text }}
+            </button>
+          }
+        </div>
       </div>
 
       <app-async-state
         [loading]="routers.loading()"
         [error]="routers.error()"
-        [empty]="routers.value().length === 0"
+        [empty]="filteredRouters().length === 0"
         emptyIcon="fas fa-server"
-        emptyTitle="Ningun router vinculado"
-        emptyText="Anade el primer router con un usuario de API dedicado."
+        emptyTitle="Sin routers que coincidan"
+        emptyText="Anade el primer router o ajusta los filtros."
         (retry)="routers.reload()"
       />
 
-      @if (!routers.loading() && !routers.error() && routers.value().length > 0) {
+      @if (!routers.loading() && !routers.error() && filteredRouters().length > 0) {
         <div class="table-wrap">
           <table class="data-table">
             <thead>
@@ -75,7 +96,7 @@
               </tr>
             </thead>
             <tbody>
-              @for (router of routers.value(); track router.id) {
+              @for (router of pager.items(); track router.id) {
                 <tr>
                   <td>
                     <div class="cell-main">{{ router.name }}</div>
@@ -89,6 +110,7 @@
             </tbody>
           </table>
         </div>
+        <app-table-pager [pager]="pager" />
       }
     </div>
 

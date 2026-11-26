@@ -8,6 +8,8 @@ import {
   Invoice,
   ManualPaymentRequest,
   Payment,
+  UpdateInvoiceRequest,
+  UpdatePaymentRequest,
 } from '../models';
 import { API } from './api.config';
 
@@ -28,6 +30,14 @@ export class BillingApi {
     return this.http.post<Invoice>(API.billing.invoices, body);
   }
 
+  updateInvoice(id: string, body: UpdateInvoiceRequest): Observable<Invoice> {
+    return this.http.put<Invoice>(`${API.billing.invoices}/${id}`, body);
+  }
+
+  deleteInvoice(id: string): Observable<void> {
+    return this.http.delete<void>(`${API.billing.invoices}/${id}`);
+  }
+
   /** Facturacion masiva del periodo: recorre los clientes activos y emite lo que falte. */
   runBilling(): Observable<BillingRunResult> {
     return this.http.post<BillingRunResult>(API.billing.run, {});
@@ -45,5 +55,13 @@ export class BillingApi {
    */
   registerPayment(body: ManualPaymentRequest): Observable<Payment> {
     return this.http.post<Payment>(`${API.billing.payments}/manual`, body);
+  }
+
+  updatePayment(id: string, body: UpdatePaymentRequest): Observable<Payment> {
+    return this.http.put<Payment>(`${API.billing.payments}/${id}`, body);
+  }
+
+  deletePayment(id: string): Observable<void> {
+    return this.http.delete<void>(`${API.billing.payments}/${id}`);
   }
 }

@@ -114,9 +114,20 @@
               <h3>Proveedores en la plataforma</h3>
               <div class="sub">{{ tenants.value().length }} registrado(s) · solo Super Admin</div>
             </div>
-            <button appRipple type="button" class="btn btn-outline btn-sm" (click)="openAddTenant()">
-              <i class="fas fa-plus"></i> Registrar ISP
-            </button>
+            <div class="row-wrap">
+              <div class="topbar-search" style="max-width: 220px">
+                <i class="fas fa-search"></i>
+                <input
+                  placeholder="Buscar proveedor…"
+                  [value]="tenantSearch()"
+                  (input)="tenantSearch.set($any($event.target).value)"
+                  aria-label="Buscar proveedor"
+                />
+              </div>
+              <button appRipple type="button" class="btn btn-outline btn-sm" (click)="openAddTenant()">
+                <i class="fas fa-plus"></i> Registrar ISP
+              </button>
+            </div>
           </div>
           <div class="table-wrap">
             <table class="data-table">
@@ -130,7 +141,7 @@
                 </tr>
               </thead>
               <tbody>
-                @for (row of tenants.value(); track row.id) {
+                @for (row of tenantsPager.items(); track row.id) {
                   <tr>
                     <td class="cell-main">
                       {{ row.name }}
@@ -149,6 +160,7 @@
               </tbody>
             </table>
           </div>
+          <app-table-pager [pager]="tenantsPager" />
         </div>
       }
     }
@@ -373,6 +385,15 @@
             </div>
           </div>
           <div class="row-wrap">
+            <div class="topbar-search" style="max-width: 200px">
+              <i class="fas fa-search"></i>
+              <input
+                placeholder="Buscar rol…"
+                [value]="roleSearch()"
+                (input)="roleSearch.set($any($event.target).value)"
+                aria-label="Buscar rol"
+              />
+            </div>
             @if (isSuperAdmin() && tenants.value().length > 0) {
               <select
                 class="form-control"
@@ -411,7 +432,7 @@
             (retry)="loadRoles(managedRoleTenant()!.id)"
           />
 
-          @if (!customRolesLoading() && !customRolesError() && customRoles().length > 0) {
+          @if (!customRolesLoading() && !customRolesError() && filteredCustomRoles().length > 0) {
             <div class="table-wrap">
               <table class="data-table">
                 <thead>
@@ -423,7 +444,7 @@
                   </tr>
                 </thead>
                 <tbody>
-                  @for (role of customRoles(); track role.id) {
+                  @for (role of customRolesPager.items(); track role.id) {
                     <tr [class.role-row-disabled]="!isRoleEnabled(role)">
                       <td>
                         <div class="cell-main">{{ role.name }}</div>
@@ -495,6 +516,7 @@
                 </tbody>
               </table>
             </div>
+            <app-table-pager [pager]="customRolesPager" />
           }
         }
       </div>
@@ -506,11 +528,34 @@
           <h3>Usuarios de la consola</h3>
           <div class="sub">{{ tenantUsers().length }} con acceso</div>
         </div>
-        @if (canManageRoles()) {
-          <button appRipple type="button" class="btn btn-grad btn-sm" (click)="openAddUser()">
-            <i class="fas fa-user-plus"></i> Nuevo usuario
-          </button>
-        }
+        <div class="row-wrap">
+          <div class="topbar-search" style="max-width: 210px">
+            <i class="fas fa-search"></i>
+            <input
+              placeholder="Nombre, correo o ISP…"
+              [value]="userSearch()"
+              (input)="userSearch.set($any($event.target).value)"
+              aria-label="Buscar usuario"
+            />
+          </div>
+          <select
+            class="form-control"
+            style="width: auto; padding: 0.4rem 2.2rem 0.4rem 0.7rem; font-size: 0.8rem"
+            [value]="userRoleFilter()"
+            (change)="userRoleFilter.set($any($event.target).value)"
+            aria-label="Filtrar por rol"
+          >
+            <option value="ALL">Todos los roles</option>
+            @for (opt of roleOptions(); track opt.value) {
+              <option [value]="opt.value">{{ opt.text }}</option>
+            }
+          </select>
+          @if (canManageRoles()) {
+            <button appRipple type="button" class="btn btn-grad btn-sm" (click)="openAddUser()">
+              <i class="fas fa-user-plus"></i> Nuevo usuario
+            </button>
+          }
+        </div>
       </div>
 
       <app-async-state
@@ -518,8 +563,8 @@
         [error]="users.error()"
         [empty]="tenantUsers().length === 0"
         emptyIcon="fas fa-users"
-        emptyTitle="Sin usuarios"
-        emptyText="Crea el primer usuario para este proveedor."
+        emptyTitle="Sin usuarios que coincidan"
+        emptyText="Crea el primer usuario para este proveedor o ajusta los filtros."
         (retry)="users.reload()"
       />
 
@@ -536,7 +581,7 @@
               </tr>
             </thead>
             <tbody>
-              @for (user of tenantUsers(); track user.id) {
+              @for (user of usersPager.items(); track user.id) {
                 <tr>
                   <td>
                     <span class="avatar-sm">{{ initials(user.fullName) }}</span>
@@ -562,6 +607,7 @@
             </tbody>
           </table>
         </div>
+        <app-table-pager [pager]="usersPager" />
       }
     </div>
   }

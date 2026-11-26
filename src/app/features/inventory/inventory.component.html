@@ -65,7 +65,6 @@
 
   <div class="card">
     <div class="card-header">
-      <h3>Detalle del inventario</h3>
       <div class="topbar-search">
         <i class="fas fa-search"></i>
         <input
@@ -75,6 +74,34 @@
           aria-label="Buscar equipo"
         />
       </div>
+
+      <div class="row-wrap">
+        <select
+          class="form-control"
+          style="width: auto; padding: 0.4rem 2.2rem 0.4rem 0.7rem; font-size: 0.8rem"
+          [value]="typeFilter()"
+          (change)="typeFilter.set($any($event.target).value)"
+          aria-label="Filtrar por tipo de equipo"
+        >
+          <option value="ALL">Todos los tipos</option>
+          @for (type of types; track type.value) {
+            <option [value]="type.value">{{ type.text }}</option>
+          }
+        </select>
+
+        @for (opt of statusOptions; track opt.value) {
+          <button
+            type="button"
+            class="badge"
+            [class.badge-violet]="statusFilter() === opt.value"
+            [class.badge-gray]="statusFilter() !== opt.value"
+            style="cursor: pointer; border: none; font-family: inherit"
+            (click)="statusFilter.set(opt.value)"
+          >
+            {{ opt.text }}
+          </button>
+        }
+      </div>
     </div>
 
     <app-async-state
@@ -82,8 +109,8 @@
       [error]="equipment.error()"
       [empty]="filtered().length === 0"
       emptyIcon="fas fa-boxes-stacked"
-      emptyTitle="Bodega vacia"
-      emptyText="Ingresa el primer equipo con su numero de serie."
+      emptyTitle="Sin equipos que coincidan"
+      emptyText="Ingresa el primer equipo con su numero de serie o ajusta los filtros."
       (retry)="equipment.reload()"
     />
 
@@ -101,7 +128,7 @@
             </tr>
           </thead>
           <tbody>
-            @for (item of filtered(); track item.id) {
+            @for (item of pager.items(); track item.id) {
               <tr>
                 <td>
                   <div class="cell-main">{{ item.brand || 'Sin marca' }} {{ item.model }}</div>
@@ -117,18 +144,39 @@
                       <i class="fas fa-user-plus"></i> Asignar
                     </button>
                   }
+                  <button
+                    type="button"
+                    class="btn btn-ghost btn-icon"
+                    title="Editar equipo"
+                    (click)="openEdit(item)"
+                  >
+                    <i class="fas fa-pen"></i>
+                  </button>
+                  <button
+                    type="button"
+                    class="btn btn-ghost btn-icon"
+                    style="color: var(--danger)"
+                    title="Eliminar equipo"
+                    (click)="confirmDelete(item)"
+                  >
+                    <i class="fas fa-trash"></i>
+                  </button>
                 </td>
               </tr>
             }
           </tbody>
         </table>
       </div>
+      <app-table-pager [pager]="pager" />
     }
   </div>
 </div>
 
-@if (creating()) {
-  <app-modal title="Ingresar equipo a bodega" (close)="closeModals()">
+@if (modalOpen()) {
+  <app-modal
+    [title]="editing() ? 'Editar equipo de inventario' : 'Ingresar equipo a bodega'"
+    (close)="closeModals()"
+  >
     <form [formGroup]="form" (ngSubmit)="save()" id="equipment-form">
       <div class="form-row">
         <div class="form-group">
@@ -159,7 +207,31 @@
         </div>
       </div>
 
-      <p class="hint">El equipo entra como disponible en bodega hasta que se asigne a un cliente.</p>
+      @if (editing()) {
+        <div class="form-row">
+          <div class="form-group">
+            <label for="e-status">Estado</label>
+            <select id="e-status" class="form-control" formControlName="status">
+              @for (st of equipmentStatuses; track st.value) {
+                <option [value]="st.value">{{ st.text }}</option>
+              }
+            </select>
+          </div>
+          @if (form.controls.status.value === 'ASSIGNED') {
+            <div class="form-group">
+              <label for="e-assigned-client">Cliente asignado</label>
+              <select id="e-assigned-client" class="form-control" formControlName="assignedClientId">
+                <option value="">Sin cliente</option>
+                @for (client of clients.value(); track client.id) {
+                  <option [value]="client.id">{{ client.fullName }} — {{ client.document }}</option>
+                }
+              </select>
+            </div>
+          }
+        </div>
+      } @else {
+        <p class="hint">El equipo entra como disponible en bodega hasta que se asigne a un cliente.</p>
+      }
     </form>
 
     <ng-container modalFooter>
@@ -169,7 +241,31 @@
           <i class="fas fa-circle-notch" style="animation: spinSlow 1s linear infinite"></i>
           Guardando…
         } @else {
-          <i class="fas fa-check"></i> Guardar equipo
+          <i class="fas fa-check"></i> {{ editing() ? 'Guardar cambios' : 'Guardar equipo' }}
+        }
+      </button>
+    </ng-container>
+  </app-modal>
+}
+
+@if (deleting(); as target) {
+  <app-modal title="Eliminar equipo" (close)="closeModals()">
+    <div class="alert alert-danger">
+      <i class="fas fa-triangle-exclamation"></i>
+      <span>
+        Vas a eliminar el equipo <b>{{ target.brand || 'Sin marca' }} {{ target.model }}</b> con serial
+        <span class="mono">{{ target.serialNumber }}</span>. Esta accion no se puede deshacer.
+      </span>
+    </div>
+
+    <ng-container modalFooter>
+      <button type="button" class="btn btn-outline" (click)="closeModals()">Cancelar</button>
+      <button appRipple type="button" class="btn btn-danger" [disabled]="saving()" (click)="removeEquipment()">
+        @if (saving()) {
+          <i class="fas fa-circle-notch" style="animation: spinSlow 1s linear infinite"></i>
+          Eliminando…
+        } @else {
+          <i class="fas fa-trash"></i> Eliminar equipo
         }
       </button>
     </ng-container>

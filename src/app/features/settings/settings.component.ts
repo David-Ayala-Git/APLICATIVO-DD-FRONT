@@ -29,9 +29,11 @@ import { AsyncStateComponent } from '../../shared/components/async-state.compone
 import { ModalComponent } from '../../shared/components/modal.component';
 import { PageHeadComponent } from '../../shared/components/page-head.component';
 import { StatusBadgeComponent } from '../../shared/components/status-badge.component';
+import { TablePagerComponent } from '../../shared/components/table-pager.component';
 import { RippleDirective } from '../../shared/directives/ripple.directive';
-import { initials } from '../../shared/format';
+import { initials, normalize } from '../../shared/format';
 import { roleLabel, tenantPlanLabel, tenantStatusLabel } from '../../shared/labels';
+import { paginate } from '../../shared/pagination';
 import { NAV } from '../../layout/shell/nav';
 
 type Tab = 'empresa' | 'integraciones' | 'usuarios';
@@ -51,6 +53,7 @@ type Tab = 'empresa' | 'integraciones' | 'usuarios';
     StatusBadgeComponent,
     AsyncStateComponent,
     ModalComponent,
+    TablePagerComponent,
     RippleDirective,
   ],
   templateUrl: './settings.component.html',
@@ -262,11 +265,53 @@ export class SettingsComponent {
     return source.filter((r) => r.enabled !== false);
   });
 
+  protected readonly tenantSearch = signal('');
+  protected readonly roleSearch = signal('');
+  protected readonly userSearch = signal('');
+  protected readonly userRoleFilter = signal<Role | 'ALL'>('ALL');
+
+  protected readonly filteredTenants = computed(() => {
+    const term = normalize(this.tenantSearch());
+    if (!term) {
+      return this.tenants.value();
+    }
+    return this.tenants.value().filter((t) =>
+      [t.name, t.slug, t.plan, t.status].map((v) => normalize(v)).some((v) => v.includes(term)),
+    );
+  });
+  protected readonly tenantsPager = paginate(this.filteredTenants, 10);
+
+  protected readonly filteredCustomRoles = computed(() => {
+    const term = normalize(this.roleSearch());
+    if (!term) {
+      return this.customRoles();
+    }
+    return this.customRoles().filter((r) =>
+      [r.name, r.description].map((v) => normalize(v)).some((v) => v.includes(term)),
+    );
+  });
+  protected readonly customRolesPager = paginate(this.filteredCustomRoles, 10);
+
   /**
    * Usuarios visibles: dd_ms_auth ya filtra por quien llama (Super Admin ve
    * todos, Admin del ISP los de su proveedor, el resto solo a si mismo).
    */
-  protected readonly tenantUsers = computed(() => this.users.value());
+  protected readonly tenantUsers = computed(() => {
+    const term = normalize(this.userSearch());
+    const role = this.userRoleFilter();
+    return this.users.value().filter((u) => {
+      if (role !== 'ALL' && u.role !== role) {
+        return false;
+      }
+      if (!term) {
+        return true;
+      }
+      return [u.fullName, u.email, this.tenantName(u.tenantId), this.customRoleName(u.customRoleId)]
+        .map((v) => normalize(v))
+        .some((v) => v.includes(term));
+    });
+  });
+  protected readonly usersPager = paginate(this.tenantUsers, 10);
 
   /** Para el Super Admin, que ve usuarios de varios proveedores a la vez. */
   protected tenantName(tenantId: string | null): string {

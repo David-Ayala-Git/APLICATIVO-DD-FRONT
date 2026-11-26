@@ -119,23 +119,34 @@
 
     <div class="card" style="margin-top: 1rem">
       <div class="card-header">
-        <h3>Historico de cortes</h3>
-        <span class="sub">
-          Ultimo generado: {{ current.value()!.generatedAt | date: 'dd/MM/yyyy HH:mm' }}
-        </span>
+        <div>
+          <h3>Historico de cortes</h3>
+          <div class="sub">
+            Ultimo generado: {{ current.value()!.generatedAt | date: 'dd/MM/yyyy HH:mm' }}
+          </div>
+        </div>
+        <div class="topbar-search">
+          <i class="fas fa-search"></i>
+          <input
+            placeholder="Filtrar por periodo (2026-10)…"
+            [value]="search()"
+            (input)="search.set($any($event.target).value)"
+            aria-label="Filtrar historico de reportes"
+          />
+        </div>
       </div>
 
       <app-async-state
         [loading]="history.loading()"
         [error]="history.error()"
-        [empty]="ordered().length === 0"
+        [empty]="filteredHistory().length === 0"
         emptyIcon="fas fa-clock-rotate-left"
         emptyTitle="Sin historico"
         emptyText="Cada recalculo deja un corte guardado aqui."
         (retry)="history.reload()"
       />
 
-      @if (ordered().length > 0) {
+      @if (filteredHistory().length > 0) {
         <div class="table-wrap">
           <table class="data-table">
             <thead>
@@ -151,7 +162,7 @@
               </tr>
             </thead>
             <tbody>
-              @for (row of ordered(); track row.period) {
+              @for (row of historyPager.items(); track row.period) {
                 <tr>
                   <td class="cell-main">{{ periodLabel(row.period) }}</td>
                   <td style="font-weight: 700">{{ cop(row.mrr) }}</td>
@@ -175,6 +186,7 @@
             </tbody>
           </table>
         </div>
+        <app-table-pager [pager]="historyPager" />
       }
     </div>
   }

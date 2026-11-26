@@ -176,11 +176,22 @@
     <div class="card">
       <div class="card-header">
         <h3>Tickets abiertos</h3>
-        @if (urgentCount() > 0) {
-          <span class="badge badge-danger">{{ urgentCount() }} urgentes</span>
-        } @else {
-          <span class="badge badge-success">Sin urgencias</span>
-        }
+        <div class="row-wrap">
+          <div class="topbar-search" style="max-width: 185px">
+            <i class="fas fa-search"></i>
+            <input
+              placeholder="Filtrar ticket…"
+              [value]="ticketSearch()"
+              (input)="ticketSearch.set($any($event.target).value)"
+              aria-label="Filtrar tickets abiertos"
+            />
+          </div>
+          @if (urgentCount() > 0) {
+            <span class="badge badge-danger">{{ urgentCount() }} urgentes</span>
+          } @else {
+            <span class="badge badge-success">Sin urgencias</span>
+          }
+        </div>
       </div>
       @if (openTickets().length === 0) {
         <div class="empty">
@@ -192,7 +203,7 @@
         <div class="table-wrap">
           <table class="data-table">
             <tbody>
-              @for (ticket of openTickets(); track ticket.id) {
+              @for (ticket of ticketsPager.items(); track ticket.id) {
                 <tr>
                   <td>
                     <div class="cell-main">{{ ticket.reason }}</div>
@@ -205,6 +216,7 @@
             </tbody>
           </table>
         </div>
+        <app-table-pager [pager]="ticketsPager" />
         <div class="card-body" style="border-top: 1px solid var(--border)">
           <a class="btn btn-outline btn-sm" [routerLink]="['/app/tickets']">
             <i class="fas fa-headset"></i> Abrir mesa de ayuda

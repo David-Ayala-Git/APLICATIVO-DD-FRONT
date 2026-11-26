@@ -1,14 +1,17 @@
-import { Component, computed, inject } from '@angular/core';
+import { Component, computed, inject, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
 
 import { AuthApi } from '../../core/api';
-import { Tenant, UserSummary } from '../../core/models';
+import { Tenant, TenantStatus, UserSummary } from '../../core/models';
 import { collection } from '../../core/state/collection';
 import { AsyncStateComponent } from '../../shared/components/async-state.component';
 import { StatCardComponent } from '../../shared/components/stat-card.component';
 import { StatusBadgeComponent } from '../../shared/components/status-badge.component';
+import { TablePagerComponent } from '../../shared/components/table-pager.component';
 import { RippleDirective } from '../../shared/directives/ripple.directive';
+import { normalize } from '../../shared/format';
 import { tenantPlanLabel, tenantStatusLabel } from '../../shared/labels';
+import { paginate } from '../../shared/pagination';
 
 /**
  * Inicio del SUPER_ADMIN. No tiene tenant, asi que el dashboard gerencial (que
@@ -17,7 +20,14 @@ import { tenantPlanLabel, tenantStatusLabel } from '../../shared/labels';
  */
 @Component({
   selector: 'app-platform-dashboard',
-  imports: [RouterLink, AsyncStateComponent, StatCardComponent, StatusBadgeComponent, RippleDirective],
+  imports: [
+    RouterLink,
+    AsyncStateComponent,
+    StatCardComponent,
+    StatusBadgeComponent,
+    TablePagerComponent,
+    RippleDirective,
+  ],
   template: `
     <div class="page">
       <div class="page-head">
@@ -61,26 +71,45 @@ import { tenantPlanLabel, tenantStatusLabel } from '../../shared/labels';
 
       <div class="card" style="margin-top: 1rem">
         <div class="card-header">
-          <div>
-            <h3>Proveedores y modulos</h3>
-            <div class="sub">Activa o desactiva modulos desde Modulos, eligiendo el proveedor</div>
+          <div class="topbar-search">
+            <i class="fas fa-search"></i>
+            <input
+              placeholder="Buscar proveedor o slug…"
+              [value]="search()"
+              (input)="search.set($any($event.target).value)"
+              aria-label="Buscar proveedor"
+            />
           </div>
-          <a class="btn btn-outline btn-sm" [routerLink]="['/app/modules']">
-            <i class="fas fa-cubes"></i> Modulos
-          </a>
+          <div class="row-wrap">
+            @for (opt of statusOptions; track opt.value) {
+              <button
+                type="button"
+                class="badge"
+                [class.badge-violet]="statusFilter() === opt.value"
+                [class.badge-gray]="statusFilter() !== opt.value"
+                style="cursor: pointer; border: none; font-family: inherit"
+                (click)="statusFilter.set(opt.value)"
+              >
+                {{ opt.text }}
+              </button>
+            }
+            <a class="btn btn-outline btn-sm" [routerLink]="['/app/modules']">
+              <i class="fas fa-cubes"></i> Modulos
+            </a>
+          </div>
         </div>
 
         <app-async-state
           [loading]="tenants.loading()"
           [error]="tenants.error()"
-          [empty]="tenants.value().length === 0"
+          [empty]="filteredTenants().length === 0"
           emptyIcon="fas fa-building"
-          emptyTitle="Sin proveedores"
-          emptyText="Registra el primer ISP en Configuracion."
+          emptyTitle="Sin proveedores que coincidan"
+          emptyText="Registra el primer ISP en Configuracion o ajusta los filtros."
           (retry)="tenants.reload()"
         />
 
-        @if (tenants.value().length > 0) {
+        @if (filteredTenants().length > 0) {
           <div class="table-wrap">
             <table class="data-table">
               <thead>
@@ -93,7 +122,7 @@ import { tenantPlanLabel, tenantStatusLabel } from '../../shared/labels';
                 </tr>
               </thead>
               <tbody>
-                @for (row of tenants.value(); track row.id) {
+                @for (row of pager.items(); track row.id) {
                   <tr>
                     <td>
                       <div class="cell-main">{{ row.name }}</div>
@@ -116,6 +145,7 @@ import { tenantPlanLabel, tenantStatusLabel } from '../../shared/labels';
               </tbody>
             </table>
           </div>
+          <app-table-pager [pager]="pager" />
         }
       </div>
     </div>
@@ -126,6 +156,30 @@ export class PlatformDashboardComponent {
 
   protected readonly tenants = collection(() => this.api.tenants(), [] as Tenant[]);
   protected readonly users = collection(() => this.api.users(), [] as UserSummary[]);
+
+  protected readonly search = signal('');
+  protected readonly statusFilter = signal<TenantStatus | 'ALL'>('ALL');
+  protected readonly statusOptions: { value: TenantStatus | 'ALL'; text: string }[] = [
+    { value: 'ALL', text: 'Todos' },
+    { value: 'ACTIVE', text: 'Activos' },
+    { value: 'SUSPENDED', text: 'Suspendidos' },
+  ];
+
+  protected readonly filteredTenants = computed(() => {
+    const term = normalize(this.search());
+    const status = this.statusFilter();
+    return this.tenants.value().filter((t) => {
+      if (status !== 'ALL' && t.status !== status) {
+        return false;
+      }
+      if (!term) {
+        return true;
+      }
+      return [t.name, t.slug, t.plan].map((v) => normalize(v)).some((v) => v.includes(term));
+    });
+  });
+
+  protected readonly pager = paginate(this.filteredTenants, 10);
 
   protected readonly activeTenants = computed(
     () => this.tenants.value().filter((t) => t.status === 'ACTIVE').length,

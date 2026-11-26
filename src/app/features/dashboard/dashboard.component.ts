@@ -1,5 +1,5 @@
 import { DatePipe } from '@angular/common';
-import { Component, computed, inject } from '@angular/core';
+import { Component, computed, inject, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import { catchError, of } from 'rxjs';
 
@@ -17,9 +17,11 @@ import { collection } from '../../core/state/collection';
 import { BarChartComponent, BarDatum } from '../../shared/components/bar-chart.component';
 import { StatCardComponent } from '../../shared/components/stat-card.component';
 import { StatusBadgeComponent } from '../../shared/components/status-badge.component';
+import { TablePagerComponent } from '../../shared/components/table-pager.component';
 import { RippleDirective } from '../../shared/directives/ripple.directive';
-import { copCompact, cop, lastPeriods, monthShort, percent } from '../../shared/format';
+import { copCompact, cop, lastPeriods, monthShort, normalize, percent } from '../../shared/format';
 import { priorityLabel, technologyLabel, ticketStatusLabel } from '../../shared/labels';
+import { paginate } from '../../shared/pagination';
 
 /**
  * Tablero gerencial. Cruza CRM, facturacion, red y soporte en una sola vista;
@@ -34,6 +36,7 @@ import { priorityLabel, technologyLabel, ticketStatusLabel } from '../../shared/
     StatCardComponent,
     StatusBadgeComponent,
     BarChartComponent,
+    TablePagerComponent,
     RippleDirective,
   ],
   templateUrl: './dashboard.component.html',
@@ -166,13 +169,22 @@ export class DashboardComponent {
 
   // ---------- Tickets ----------
 
-  protected readonly openTickets = computed(() =>
-    this.tickets
+  protected readonly ticketSearch = signal('');
+
+  protected readonly openTickets = computed(() => {
+    const term = normalize(this.ticketSearch());
+    return this.tickets
       .value()
       .filter((t) => t.status === 'OPEN' || t.status === 'IN_PROGRESS')
-      .sort((a, b) => priorityWeight(b.priority) - priorityWeight(a.priority))
-      .slice(0, 5),
-  );
+      .filter((t) =>
+        !term
+          ? true
+          : [t.reason, this.clientName(t.clientId)].map((v) => normalize(v)).some((v) => v.includes(term)),
+      )
+      .sort((a, b) => priorityWeight(b.priority) - priorityWeight(a.priority));
+  });
+
+  protected readonly ticketsPager = paginate(this.openTickets, 5);
 
   protected readonly urgentCount = computed(
     () => this.tickets.value().filter((t) => t.priority === 'URGENT' && t.status !== 'CLOSED').length,

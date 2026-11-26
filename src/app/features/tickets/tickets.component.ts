@@ -13,13 +13,19 @@ import { ModalComponent } from '../../shared/components/modal.component';
 import { PageHeadComponent } from '../../shared/components/page-head.component';
 import { StatCardComponent } from '../../shared/components/stat-card.component';
 import { StatusBadgeComponent } from '../../shared/components/status-badge.component';
+import { TablePagerComponent } from '../../shared/components/table-pager.component';
 import { RippleDirective } from '../../shared/directives/ripple.directive';
-import { initials, normalize, slaCountdown } from '../../shared/format';
+import { durationLabel, initials, normalize, slaCountdown } from '../../shared/format';
 import { priorityLabel, ticketStatusLabel } from '../../shared/labels';
+import { paginate } from '../../shared/pagination';
 
 type StatusFilter = TicketStatus | 'ALL' | 'OPEN_ALL';
+type PriorityFilter = Priority | 'ALL';
 
-/** Mesa de ayuda: tickets con SLA, asignacion y cierre. dd_ms_support. */
+/**
+ * Mesa de ayuda: tickets con SLA, asignacion, control de inicio/fin de atencion
+ * en tickets en proceso y cierre. dd_ms_support.
+ */
 @Component({
   selector: 'app-tickets',
   imports: [
@@ -30,6 +36,7 @@ type StatusFilter = TicketStatus | 'ALL' | 'OPEN_ALL';
     StatusBadgeComponent,
     AsyncStateComponent,
     ModalComponent,
+    TablePagerComponent,
     RippleDirective,
   ],
   templateUrl: './tickets.component.html',
@@ -52,6 +59,7 @@ export class TicketsComponent {
 
   protected readonly search = signal('');
   protected readonly statusFilter = signal<StatusFilter>('OPEN_ALL');
+  protected readonly priorityFilter = signal<PriorityFilter>('ALL');
   protected readonly creating = signal(false);
   protected readonly assigningTo = signal<Ticket | null>(null);
   protected readonly saving = signal(false);
@@ -110,6 +118,7 @@ export class TicketsComponent {
   protected readonly filtered = computed(() => {
     const term = normalize(this.search());
     const status = this.statusFilter();
+    const priority = this.priorityFilter();
     return this.tickets
       .value()
       .filter((ticket) => {
@@ -118,6 +127,9 @@ export class TicketsComponent {
             return false;
           }
         } else if (status !== 'ALL' && ticket.status !== status) {
+          return false;
+        }
+        if (priority !== 'ALL' && ticket.priority !== priority) {
           return false;
         }
         if (!term) {
@@ -130,6 +142,8 @@ export class TicketsComponent {
       .sort((a, b) => priorityWeight(b.priority) - priorityWeight(a.priority));
   });
 
+  protected readonly pager = paginate(this.filtered, 10);
+
   protected clientName(clientId: string): string {
     return this.clients.value().find((c) => c.id === clientId)?.fullName ?? 'Cliente';
   }
@@ -139,6 +153,14 @@ export class TicketsComponent {
       return '';
     }
     return this.technicians.value().find((t) => t.id === technicianId)?.fullName ?? 'Tecnico';
+  }
+
+  /** Un ticket en proceso solo puede marcarse resuelto despues de pulsar "Terminar ticket". */
+  protected canResolve(ticket: Ticket): boolean {
+    if (ticket.status === 'IN_PROGRESS') {
+      return Boolean(ticket.finishedAt);
+    }
+    return ticket.status === 'OPEN';
   }
 
   protected openCreate(): void {
@@ -205,7 +227,23 @@ export class TicketsComponent {
     });
   }
 
+  protected startTicket(ticket: Ticket): void {
+    this.run(ticket.id, this.api.startTicket(ticket.id), 'Atencion del ticket iniciada.');
+  }
+
+  protected finishTicket(ticket: Ticket): void {
+    this.run(
+      ticket.id,
+      this.api.finishTicket(ticket.id),
+      'Ticket terminado. Ya puedes marcarlo como resuelto.',
+    );
+  }
+
   protected resolve(ticket: Ticket): void {
+    if (!this.canResolve(ticket)) {
+      this.toast.error('Debes terminar el ticket antes de marcarlo como resuelto.');
+      return;
+    }
     this.run(ticket.id, this.api.resolveTicket(ticket.id), 'Ticket resuelto.');
   }
 
@@ -233,6 +271,7 @@ export class TicketsComponent {
 
   protected readonly initials = initials;
   protected readonly sla = slaCountdown;
+  protected readonly durationLabel = durationLabel;
   protected readonly statusLabel = ticketStatusLabel;
   protected readonly priorityLabel = priorityLabel;
 }

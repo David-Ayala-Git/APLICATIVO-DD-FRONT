@@ -96,7 +96,15 @@
 
   <div class="card">
     <div class="card-header">
-      <h3>Clientes en mora</h3>
+      <div class="topbar-search">
+        <i class="fas fa-search"></i>
+        <input
+          placeholder="Buscar cliente en mora, documento o IP…"
+          [value]="debtorSearch()"
+          (input)="debtorSearch.set($any($event.target).value)"
+          aria-label="Buscar cliente en mora"
+        />
+      </div>
       @if (stats().inArrears > 0) {
         <span class="badge badge-danger">{{ cop(stats().arrearsAmount) }} en cartera</span>
       }
@@ -105,14 +113,14 @@
     <app-async-state
       [loading]="invoices.loading() || clients.loading()"
       [error]="invoices.error() ?? clients.error()"
-      [empty]="debtors().length === 0"
+      [empty]="filteredDebtors().length === 0"
       emptyIcon="fas fa-circle-check"
       emptyTitle="Nadie en mora"
-      emptyText="Ningun cliente tiene facturas vencidas en este momento."
+      emptyText="Ningun cliente tiene facturas vencidas que coincidan con el filtro."
       (retry)="reloadAll()"
     />
 
-    @if (debtors().length > 0) {
+    @if (filteredDebtors().length > 0) {
       <div class="table-wrap">
         <table class="data-table">
           <thead>
@@ -126,7 +134,7 @@
             </tr>
           </thead>
           <tbody>
-            @for (row of debtors(); track row.client.id) {
+            @for (row of debtorsPager.items(); track row.client.id) {
               <tr>
                 <td>
                   <div class="cell-main">{{ row.client.fullName }}</div>
@@ -187,13 +195,22 @@
           </tbody>
         </table>
       </div>
+      <app-table-pager [pager]="debtorsPager" />
     }
   </div>
 
   @if (readyToRestore().length > 0) {
     <div class="card" style="margin-top: 1rem">
       <div class="card-header">
-        <h3>Listos para reactivar</h3>
+        <div class="topbar-search">
+          <i class="fas fa-search"></i>
+          <input
+            placeholder="Buscar cliente listo para reactivar…"
+            [value]="restoreSearch()"
+            (input)="restoreSearch.set($any($event.target).value)"
+            aria-label="Buscar cliente para reactivar"
+          />
+        </div>
         <span class="badge badge-success">{{ readyToRestore().length }} sin deuda</span>
       </div>
       <div class="table-wrap">
@@ -206,7 +223,7 @@
             </tr>
           </thead>
           <tbody>
-            @for (client of readyToRestore(); track client.id) {
+            @for (client of restorePager.items(); track client.id) {
               <tr>
                 <td>
                   <div class="cell-main">{{ client.fullName }}</div>
@@ -238,6 +255,7 @@
           </tbody>
         </table>
       </div>
+      <app-table-pager [pager]="restorePager" />
     </div>
   }
 </div>

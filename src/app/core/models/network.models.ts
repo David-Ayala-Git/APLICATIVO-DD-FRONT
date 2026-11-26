@@ -90,6 +90,14 @@ export interface CreateNodeRequest {
   longitude: number;
 }
 
+export interface UpdateNodeRequest {
+  name: string;
+  type: NodeType;
+  latitude: number;
+  longitude: number;
+  status?: NodeStatus;
+}
+
 export interface Equipment {
   id: string;
   type: EquipmentType;
@@ -106,6 +114,15 @@ export interface CreateEquipmentRequest {
   brand?: string | null;
   model?: string | null;
   serialNumber: string;
+}
+
+export interface UpdateEquipmentRequest {
+  type: EquipmentType;
+  brand?: string | null;
+  model?: string | null;
+  serialNumber: string;
+  status?: EquipmentStatus;
+  assignedClientId?: string | null;
 }
 
 export interface AssignEquipmentRequest {

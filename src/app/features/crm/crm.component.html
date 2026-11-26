@@ -49,7 +49,7 @@
       <div class="topbar-search">
         <i class="fas fa-search"></i>
         <input
-          placeholder="Buscar por nombre, documento, IP u ONU…"
+          placeholder="Buscar por codigo, nombre, documento, IP u ONU…"
           [value]="search()"
           (input)="search.set($any($event.target).value)"
           aria-label="Buscar cliente"
@@ -86,6 +86,7 @@
         <table class="data-table">
           <thead>
             <tr>
+              <th>Codigo</th>
               <th>Cliente</th>
               <th>Plan</th>
               <th>IP / ONU</th>
@@ -95,8 +96,11 @@
             </tr>
           </thead>
           <tbody>
-            @for (client of filtered(); track client.id) {
+            @for (client of pager.items(); track client.id) {
               <tr>
+                <td>
+                  <span class="badge badge-violet mono">{{ client.clientCode || '—' }}</span>
+                </td>
                 <td>
                   <span class="avatar-sm">{{ initials(client.fullName) }}</span>
                   <span class="cell-main">{{ client.fullName }}</span>
@@ -111,7 +115,7 @@
                 </td>
                 <td class="cell-mono">
                   {{ client.ipAddress || '—' }}
-                  <div class="cell-sub">{{ client.onuSerial || 'Sin ONU' }}</div>
+                  <div class="cell-sub">{{ client.onuSerial || 'Sin ONU/Router' }}</div>
                 </td>
                 <td><app-status-badge [label]="statusLabel(client.status)" /></td>
                 <td>{{ client.phone || '—' }}</td>
@@ -130,6 +134,7 @@
           </tbody>
         </table>
       </div>
+      <app-table-pager [pager]="pager" />
     }
   </div>
 </div>
@@ -140,6 +145,50 @@
     (close)="closeModal()"
   >
     <form [formGroup]="form" (ngSubmit)="save()" id="client-form">
+      <div class="form-group">
+        <label for="c-code">Codigo del cliente (formato 0001)</label>
+        @if (editing() === 'new') {
+          <div class="code-mode-toggle">
+            <button
+              type="button"
+              class="btn btn-sm"
+              [class.btn-grad]="codeMode() === 'auto'"
+              [class.btn-outline]="codeMode() !== 'auto'"
+              (click)="setCodeMode('auto')"
+            >
+              <i class="fas fa-wand-magic-sparkles"></i> Automatico ({{ nextAutoCode() }})
+            </button>
+            <button
+              type="button"
+              class="btn btn-sm"
+              [class.btn-grad]="codeMode() === 'manual'"
+              [class.btn-outline]="codeMode() !== 'manual'"
+              (click)="setCodeMode('manual')"
+            >
+              <i class="fas fa-keyboard"></i> Ingresar manual
+            </button>
+          </div>
+        }
+        <input
+          id="c-code"
+          class="form-control mono"
+          formControlName="clientCode"
+          [readonly]="editing() === 'new' && codeMode() === 'auto'"
+          placeholder="0001"
+          maxlength="16"
+        />
+        @if (form.controls.clientCode.touched && form.controls.clientCode.invalid) {
+          <div class="field-error">Ingresa solo digitos desde 0001 (ej. 0001, 0045).</div>
+        }
+        <div class="hint">
+          @if (editing() === 'new' && codeMode() === 'auto') {
+            Se asignara automaticamente el siguiente consecutivo disponible sin repetir.
+          } @else {
+            Unico por cliente; si escribes menos de 4 digitos se completa con ceros (ej. 12 → 0012).
+          }
+        </div>
+      </div>
+
       <div class="form-row">
         <div class="form-group">
           <label for="c-name">Nombre completo</label>
@@ -168,7 +217,7 @@
           <label for="c-plan">Plan</label>
           <select id="c-plan" class="form-control" formControlName="planId">
             <option value="">Sin plan asignado</option>
-            @for (plan of plans.value(); track plan.id) {
+            @for (plan of availablePlans(); track plan.id) {
               <option [value]="plan.id">
                 {{ plan.name }} · {{ plan.downMbps }}/{{ plan.upMbps }} Mbps
               </option>
@@ -201,7 +250,7 @@
           </div>
         </div>
         <div class="form-group">
-          <label for="c-onu">Serial de ONU</label>
+          <label for="c-onu">Serial de ONU/ Router</label>
           <input id="c-onu" class="form-control mono" formControlName="onuSerial" placeholder="HWTC-A1B2C3" />
           <div class="hint">
             Suspender aqui no corta el servicio en la red: el corte se ejecuta desde Activaciones o

@@ -10,6 +10,7 @@ import {
   CreatePlanRequest,
   Plan,
   UpdateClientRequest,
+  UpdatePlanRequest,
 } from '../models';
 import { API } from './api.config';
 
@@ -20,6 +21,10 @@ export class CrmApi {
 
   clients(): Observable<Client[]> {
     return this.http.get<Client[]>(API.crm.clients);
+  }
+
+  nextClientCode(): Observable<{ nextCode: string }> {
+    return this.http.get<{ nextCode: string }>(`${API.crm.clients}/next-code`);
   }
 
   client(id: string): Observable<Client> {
@@ -40,6 +45,18 @@ export class CrmApi {
 
   createPlan(body: CreatePlanRequest): Observable<Plan> {
     return this.http.post<Plan>(API.crm.plans, body);
+  }
+
+  updatePlan(id: string, body: UpdatePlanRequest): Observable<Plan> {
+    return this.http.put<Plan>(`${API.crm.plans}/${id}`, body);
+  }
+
+  updatePlanStatus(id: string, enabled: boolean): Observable<Plan> {
+    return this.http.patch<Plan>(`${API.crm.plans}/${id}/status`, { enabled });
+  }
+
+  deletePlan(id: string): Observable<void> {
+    return this.http.delete<void>(`${API.crm.plans}/${id}`);
   }
 
   contracts(): Observable<Contract[]> {

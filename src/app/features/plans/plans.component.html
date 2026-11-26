@@ -1,7 +1,7 @@
 <div class="page">
   <app-page-head
     title="Planes de servicio"
-    subtitle="Catalogo por tecnologia, con perfil de velocidad y precio mensual"
+    subtitle="Catalogo por tecnologia, con perfil de velocidad, precio mensual y control de estado"
   >
     <button
       appRipple
@@ -12,9 +12,11 @@
     >
       <i class="fas fa-rotate"></i> Actualizar
     </button>
-    <button appRipple type="button" class="btn btn-grad btn-sm" (click)="openCreate()">
-      <i class="fas fa-plus"></i> Nuevo plan
-    </button>
+    @if (canManagePlans()) {
+      <button appRipple type="button" class="btn btn-grad btn-sm" (click)="openCreate()">
+        <i class="fas fa-plus"></i> Nuevo plan
+      </button>
+    }
   </app-page-head>
 
   @if (plans.loading() || plans.error()) {
@@ -39,6 +41,7 @@
         <div>
           <div class="stat-label">Planes en catalogo</div>
           <div class="stat-value">{{ totals().plans }}</div>
+          <div class="stat-change up">{{ totals().active }} activos</div>
         </div>
         <div>
           <div class="stat-label">Clientes con plan</div>
@@ -50,34 +53,129 @@
           <div class="stat-change flat">Suma de precio x clientes asignados</div>
         </div>
       </div>
+
+      <div class="card-header" style="border-top: 1px solid var(--border); border-bottom: none">
+        <div class="topbar-search">
+          <i class="fas fa-search"></i>
+          <input
+            placeholder="Buscar por nombre, tecnologia, velocidad o precio…"
+            [value]="search()"
+            (input)="search.set($any($event.target).value)"
+            aria-label="Buscar plan"
+          />
+        </div>
+        <div class="row-wrap">
+          @for (opt of statusOptions; track opt.value) {
+            <button
+              type="button"
+              class="badge"
+              [class.badge-violet]="statusFilter() === opt.value"
+              [class.badge-gray]="statusFilter() !== opt.value"
+              style="cursor: pointer; border: none; font-family: inherit"
+              (click)="statusFilter.set(opt.value)"
+            >
+              {{ opt.text }}
+            </button>
+          }
+        </div>
+      </div>
     </div>
 
-    <div class="mod-grid">
-      @for (row of rows(); track row.plan.id) {
-        <div class="card" [style.border-color]="row.clients > 0 ? '#c4b5fd' : null">
-          <div class="card-body">
-            <div class="row-wrap" style="margin-bottom: 0.6rem">
-              <span class="badge {{ row.label.badge }}">{{ row.label.text }}</span>
-              <span class="badge badge-info">Internet</span>
-            </div>
-            <h3 style="font-size: 1.05rem">{{ row.plan.name }}</h3>
-            <div class="stat-value" style="font-size: 1.6rem">
-              {{ cop(row.plan.price) }}
-              <span style="font-size: 0.8rem; color: var(--text-muted); font-weight: 500">/mes</span>
-            </div>
-            <div class="cell-sub">
-              {{ row.plan.downMbps }}&#8595; / {{ row.plan.upMbps }}&#8593; Mbps ·
-              {{ row.clients }} cliente(s)
-            </div>
-          </div>
+    @if (filtered().length === 0) {
+      <div class="card">
+        <div class="empty">
+          <i class="fas fa-filter"></i>
+          <div class="empty-title">Sin planes que coincidan</div>
+          <p>Ajusta el texto de busqueda o el filtro de estado.</p>
         </div>
-      }
-    </div>
+      </div>
+    } @else {
+      <div class="plan-glass-grid">
+        @for (row of pager.items(); track row.plan.id) {
+          <section class="plan-glass-card" [class.is-disabled]="!row.enabled">
+            <div class="plan-glass-top">
+              <span class="plan-glass-store">
+                <i class="fas fa-wifi"></i>
+                {{ row.label.text }} · INTERNET
+              </span>
+              @if (row.enabled) {
+                <span class="badge badge-success"><i class="fas fa-circle"></i> Activo</span>
+              } @else {
+                <span class="badge badge-warning">Deshabilitado</span>
+              }
+            </div>
+
+            <h3 class="plan-glass-title">{{ row.plan.name }}</h3>
+            <p class="plan-glass-sub">
+              {{ row.plan.downMbps }}&#8595; / {{ row.plan.upMbps }}&#8593; Mbps · Suscripcion mensual
+            </p>
+
+            <ul class="plan-glass-items">
+              <li>
+                <span>Velocidad de bajada</span>
+                <b class="mono">{{ row.plan.downMbps }} Mbps</b>
+              </li>
+              <li>
+                <span>Velocidad de subida</span>
+                <b class="mono">{{ row.plan.upMbps }} Mbps</b>
+              </li>
+              <li>
+                <span>Clientes asignados</span>
+                <b>{{ row.clients }} cliente(s)</b>
+              </li>
+              <li>
+                <span>Ingreso mensual estimado</span>
+                <b>{{ cop(row.plan.price * row.clients) }}</b>
+              </li>
+            </ul>
+
+            <div class="plan-glass-total">
+              <span>Tarifa mensual</span>
+              <b>{{ cop(row.plan.price) }} <small>/mes</small></b>
+            </div>
+
+            @if (canManagePlans()) {
+              <div class="plan-glass-actions">
+                <button
+                  type="button"
+                  class="plan-glass-pill-btn"
+                  (click)="openEdit(row.plan)"
+                >
+                  <i class="fas fa-pen"></i> Editar plan
+                </button>
+                <button
+                  type="button"
+                  class="plan-glass-icon-btn"
+                  [title]="row.enabled ? 'Deshabilitar plan' : 'Habilitar plan'"
+                  [disabled]="busyPlanId() === row.plan.id"
+                  (click)="toggleStatus(row.plan)"
+                >
+                  <i class="fas" [class.fa-ban]="row.enabled" [class.fa-circle-check]="!row.enabled"></i>
+                </button>
+                <button
+                  type="button"
+                  class="plan-glass-icon-btn danger"
+                  title="Eliminar plan"
+                  [disabled]="busyPlanId() === row.plan.id"
+                  (click)="deletePlan(row.plan)"
+                >
+                  <i class="fas fa-trash"></i>
+                </button>
+              </div>
+            }
+          </section>
+        }
+      </div>
+
+      <div class="card" style="margin-top: 1rem">
+        <app-table-pager [pager]="pager" />
+      </div>
+    }
   }
 </div>
 
-@if (creating()) {
-  <app-modal title="Nuevo plan" (close)="close()">
+@if (editing()) {
+  <app-modal [title]="editing() === 'new' ? 'Nuevo plan' : 'Editar plan'" (close)="close()">
     <form [formGroup]="form" (ngSubmit)="save()" id="plan-form">
       <div class="form-group">
         <label for="p-name">Nombre comercial</label>
@@ -119,6 +217,34 @@
           </select>
         </div>
       </div>
+
+      @if (editing() !== 'new') {
+        <div class="form-group">
+          <div
+            class="row-wrap"
+            style="
+              justify-content: space-between;
+              padding: 0.65rem 0.85rem;
+              background: var(--surface-2);
+              border: 1px solid var(--border);
+              border-radius: var(--radius);
+            "
+          >
+            <div>
+              <div class="cell-main" style="font-size: 0.84rem">Estado del plan</div>
+              <div class="cell-sub">Un plan deshabilitado no se ofrece al crear nuevos clientes.</div>
+            </div>
+            <label class="switch">
+              <input
+                type="checkbox"
+                [checked]="planEnabled()"
+                (change)="planEnabled.set($any($event.target).checked)"
+              />
+              <span class="slider"></span>
+            </label>
+          </div>
+        </div>
+      }
     </form>
 
     <ng-container modalFooter>
@@ -128,7 +254,7 @@
           <i class="fas fa-circle-notch" style="animation: spinSlow 1s linear infinite"></i>
           Guardando…
         } @else {
-          <i class="fas fa-check"></i> Crear plan
+          <i class="fas fa-check"></i> {{ editing() === 'new' ? 'Crear plan' : 'Guardar cambios' }}
         }
       </button>
     </ng-container>

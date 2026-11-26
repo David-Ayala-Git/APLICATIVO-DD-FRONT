@@ -126,3 +126,32 @@ export function normalize(value: string | null | undefined): string {
     .normalize('NFD')
     .replace(/[̀-ͯ]/g, '');
 }
+
+/** Duracion legible entre fecha/hora de inicio y terminacion (p. ej. "1h 25m" o "18 min"). */
+export function durationLabel(
+  startedAt: string | null | undefined,
+  finishedAt: string | null | undefined,
+): string {
+  if (!startedAt) {
+    return '—';
+  }
+  const startMs = new Date(startedAt).getTime();
+  if (Number.isNaN(startMs)) {
+    return '—';
+  }
+  const endMs = finishedAt ? new Date(finishedAt).getTime() : Date.now();
+  if (Number.isNaN(endMs) || endMs < startMs) {
+    return '—';
+  }
+  const totalSeconds = Math.floor((endMs - startMs) / 1000);
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  const label =
+    hours > 0
+      ? `${hours}h ${minutes}m`
+      : minutes > 0
+        ? `${minutes} min`
+        : `${seconds} seg`;
+  return finishedAt ? label : `En curso (${label})`;
+}

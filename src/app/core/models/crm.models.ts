@@ -6,6 +6,8 @@ export type Technology = 'FIBRA' | 'CABLE' | 'ANTENA';
 
 export interface Client {
   id: string;
+  /** Codigo unico del cliente (formato 0001, 0002, ...). */
+  clientCode: string;
   fullName: string;
   document: string;
   phone: string | null;
@@ -21,6 +23,8 @@ export interface Client {
 }
 
 export interface CreateClientRequest {
+  /** Vacio o null = el backend genera el siguiente consecutivo (0001, 0002, ...). */
+  clientCode?: string | null;
   fullName: string;
   document: string;
   phone?: string | null;
@@ -29,6 +33,7 @@ export interface CreateClientRequest {
 }
 
 export interface UpdateClientRequest {
+  clientCode?: string | null;
   fullName: string;
   phone?: string | null;
   address?: string | null;
@@ -47,6 +52,7 @@ export interface Plan {
   upMbps: number;
   technology: Technology;
   price: number;
+  enabled?: boolean;
   createdAt: string;
 }
 
@@ -56,6 +62,15 @@ export interface CreatePlanRequest {
   upMbps: number;
   technology: Technology;
   price: number;
+}
+
+export interface UpdatePlanRequest {
+  name: string;
+  downMbps: number;
+  upMbps: number;
+  technology: Technology;
+  price: number;
+  enabled?: boolean;
 }
 
 export interface Contract {

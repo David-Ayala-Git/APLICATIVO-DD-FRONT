@@ -12,13 +12,18 @@ import { AsyncStateComponent } from '../../shared/components/async-state.compone
 import { ModalComponent } from '../../shared/components/modal.component';
 import { PageHeadComponent } from '../../shared/components/page-head.component';
 import { StatCardComponent } from '../../shared/components/stat-card.component';
+import { TablePagerComponent } from '../../shared/components/table-pager.component';
 import { RippleDirective } from '../../shared/directives/ripple.directive';
 import { cop, copCompact, currentPeriod, normalize, periodLabel } from '../../shared/format';
 import { invoiceStatusLabel } from '../../shared/labels';
+import { paginate } from '../../shared/pagination';
 
 type StatusFilter = InvoiceStatus | 'ALL';
 
-/** Facturacion: corrida masiva del periodo, factura manual y cartera. */
+/**
+ * Facturacion: corrida masiva del periodo, factura manual, edicion/eliminacion
+ * restringida al periodo actual (los periodos cerrados son inmutables) y cartera.
+ */
 @Component({
   selector: 'app-billing',
   imports: [
@@ -28,6 +33,7 @@ type StatusFilter = InvoiceStatus | 'ALL';
     StatCardComponent,
     AsyncStateComponent,
     ModalComponent,
+    TablePagerComponent,
     RippleDirective,
   ],
   templateUrl: './billing.component.html',
@@ -52,6 +58,8 @@ export class BillingComponent {
   protected readonly statusFilter = signal<StatusFilter>('ALL');
   protected readonly periodFilter = signal<string>('ALL');
   protected readonly creating = signal(false);
+  protected readonly editing = signal<Invoice | null>(null);
+  protected readonly deleting = signal<Invoice | null>(null);
   protected readonly confirmRun = signal(false);
   protected readonly saving = signal(false);
   protected readonly running = signal(false);
@@ -64,12 +72,26 @@ export class BillingComponent {
     { value: 'CANCELLED', text: 'Anuladas' },
   ];
 
+  protected readonly editableStatuses: { value: InvoiceStatus; text: string }[] = [
+    { value: 'PENDING', text: 'Pendiente' },
+    { value: 'PAID', text: 'Pagada' },
+    { value: 'OVERDUE', text: 'Vencida' },
+    { value: 'CANCELLED', text: 'Anulada' },
+  ];
+
   protected readonly form = this.fb.nonNullable.group({
     clientId: ['', Validators.required],
     planId: [''],
     period: [currentPeriod(), [Validators.required, Validators.pattern(/^\d{4}-\d{2}$/)]],
     amount: [0, [Validators.required, Validators.min(1)]],
     dueDate: [defaultDueDate(), Validators.required],
+  });
+
+  protected readonly editForm = this.fb.nonNullable.group({
+    planId: [''],
+    amount: [0, [Validators.required, Validators.min(1)]],
+    dueDate: [defaultDueDate(), Validators.required],
+    status: ['PENDING' as InvoiceStatus, Validators.required],
   });
 
   protected readonly stats = computed(() => {
@@ -119,8 +141,15 @@ export class BillingComponent {
       .sort((a, b) => (a.issuedAt < b.issuedAt ? 1 : -1));
   });
 
+  protected readonly pager = paginate(this.filtered, 10);
+
   protected clientName(clientId: string): string {
     return this.clients.value().find((c) => c.id === clientId)?.fullName ?? 'Cliente';
+  }
+
+  /** Solo las facturas del periodo actual (AAAA-MM) pueden editarse o eliminarse. */
+  protected isCurrentPeriod(invoice: Invoice): boolean {
+    return invoice.period === this.currentPeriodValue;
   }
 
   protected openCreate(): void {
@@ -134,6 +163,28 @@ export class BillingComponent {
     this.creating.set(true);
   }
 
+  protected openEdit(invoice: Invoice): void {
+    if (!this.isCurrentPeriod(invoice)) {
+      this.toast.error('Solo se pueden editar facturas del periodo actual.');
+      return;
+    }
+    this.editing.set(invoice);
+    this.editForm.reset({
+      planId: invoice.planId ?? '',
+      amount: Number(invoice.amount),
+      dueDate: invoice.dueDate ? invoice.dueDate.slice(0, 10) : defaultDueDate(),
+      status: invoice.status,
+    });
+  }
+
+  protected confirmDelete(invoice: Invoice): void {
+    if (!this.isCurrentPeriod(invoice)) {
+      this.toast.error('Solo se pueden eliminar facturas del periodo actual.');
+      return;
+    }
+    this.deleting.set(invoice);
+  }
+
   /** Al elegir plan, precargamos su precio: es el caso normal. */
   protected onPlanChange(planId: string): void {
     const plan = this.plans.value().find((p) => p.id === planId);
@@ -142,8 +193,17 @@ export class BillingComponent {
     }
   }
 
+  protected onEditPlanChange(planId: string): void {
+    const plan = this.plans.value().find((p) => p.id === planId);
+    if (plan) {
+      this.editForm.controls.amount.setValue(Number(plan.price));
+    }
+  }
+
   protected closeModals(): void {
     this.creating.set(false);
+    this.editing.set(null);
+    this.deleting.set(null);
     this.confirmRun.set(false);
   }
 
@@ -174,6 +234,55 @@ export class BillingComponent {
           this.toast.error(describeHttpError(err));
         },
       });
+  }
+
+  protected saveEdit(): void {
+    const current = this.editing();
+    if (!current || this.editForm.invalid || this.saving()) {
+      this.editForm.markAllAsTouched();
+      return;
+    }
+    const raw = this.editForm.getRawValue();
+    this.saving.set(true);
+    this.api
+      .updateInvoice(current.id, {
+        planId: raw.planId || null,
+        amount: Number(raw.amount),
+        dueDate: raw.dueDate,
+        status: raw.status,
+      })
+      .subscribe({
+        next: () => {
+          this.saving.set(false);
+          this.editing.set(null);
+          this.toast.success('Factura actualizada.');
+          this.invoices.reload();
+        },
+        error: (err: unknown) => {
+          this.saving.set(false);
+          this.toast.error(describeHttpError(err));
+        },
+      });
+  }
+
+  protected removeInvoice(): void {
+    const current = this.deleting();
+    if (!current || this.saving()) {
+      return;
+    }
+    this.saving.set(true);
+    this.api.deleteInvoice(current.id).subscribe({
+      next: () => {
+        this.saving.set(false);
+        this.deleting.set(null);
+        this.toast.success('Factura eliminada.');
+        this.invoices.reload();
+      },
+      error: (err: unknown) => {
+        this.saving.set(false);
+        this.toast.error(describeHttpError(err));
+      },
+    });
   }
 
   /** Corrida mensual: el backend decide a quien facturar y que omitir. */

@@ -53,7 +53,6 @@
 
   <div class="card">
     <div class="card-header">
-      <h3>ONUs registradas</h3>
       <div class="topbar-search">
         <i class="fas fa-search"></i>
         <input
@@ -62,6 +61,20 @@
           (input)="search.set($any($event.target).value)"
           aria-label="Buscar ONU"
         />
+      </div>
+      <div class="row-wrap">
+        @for (opt of statusOptions; track opt.value) {
+          <button
+            type="button"
+            class="badge"
+            [class.badge-violet]="statusFilter() === opt.value"
+            [class.badge-gray]="statusFilter() !== opt.value"
+            style="cursor: pointer; border: none; font-family: inherit"
+            (click)="statusFilter.set(opt.value)"
+          >
+            {{ opt.text }}
+          </button>
+        }
       </div>
     </div>
 
@@ -89,7 +102,7 @@
             </tr>
           </thead>
           <tbody>
-            @for (onu of filtered(); track onu.id) {
+            @for (onu of pager.items(); track onu.id) {
               <tr>
                 <td class="cell-mono">
                   <div class="cell-main">{{ onu.serial }}</div>
@@ -124,6 +137,7 @@
           </tbody>
         </table>
       </div>
+      <app-table-pager [pager]="pager" />
     }
   </div>
 </div>

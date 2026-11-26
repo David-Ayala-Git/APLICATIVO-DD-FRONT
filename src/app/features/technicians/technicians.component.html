@@ -1,8 +1,17 @@
 <div class="page">
   <app-page-head
     title="Gestion de tecnicos"
-    subtitle="Cuadrilla, disponibilidad y ordenes de trabajo en campo"
+    subtitle="Cuadrilla, disponibilidad y ordenes de trabajo con registro de inicio, fin y duracion"
   >
+    <button
+      appRipple
+      type="button"
+      class="btn btn-outline btn-sm"
+      [disabled]="orders.loading() || technicians.loading()"
+      (click)="technicians.reload(); orders.reload()"
+    >
+      <i class="fas fa-rotate"></i> Actualizar
+    </button>
     <button appRipple type="button" class="btn btn-outline btn-sm" (click)="openAddTechnician()">
       <i class="fas fa-user-plus"></i> Agregar tecnico
     </button>
@@ -15,22 +24,33 @@
     <div class="card">
       <div class="card-header">
         <h3>Cuadrilla</h3>
-        <span class="badge badge-success">{{ crewStats().available }} disponible(s)</span>
+        <div class="row-wrap">
+          <div class="topbar-search" style="max-width: 190px">
+            <i class="fas fa-search"></i>
+            <input
+              placeholder="Buscar tecnico…"
+              [value]="techSearch()"
+              (input)="techSearch.set($any($event.target).value)"
+              aria-label="Buscar tecnico"
+            />
+          </div>
+          <span class="badge badge-success">{{ crewStats().available }} disponible(s)</span>
+        </div>
       </div>
 
       <app-async-state
         [loading]="technicians.loading()"
         [error]="technicians.error()"
-        [empty]="technicians.value().length === 0"
+        [empty]="filteredTechnicians().length === 0"
         emptyIcon="fas fa-user-gear"
         emptyTitle="Sin tecnicos registrados"
         emptyText="Agrega el primer tecnico para poder asignarle tickets y ordenes."
         (retry)="technicians.reload()"
       />
 
-      @if (!technicians.loading() && technicians.value().length > 0) {
+      @if (!technicians.loading() && filteredTechnicians().length > 0) {
         <div class="card-body">
-          @for (tech of technicians.value(); track tech.id) {
+          @for (tech of techPager.items(); track tech.id) {
             <div class="list-row">
               <span class="avatar-sm" style="background: var(--success-light); color: var(--success)">
                 {{ initials(tech.fullName) }}
@@ -58,6 +78,7 @@
             </div>
           }
         </div>
+        <app-table-pager [pager]="techPager" />
       }
     </div>
 
@@ -108,17 +129,56 @@
 
   <div class="card" style="margin-top: 1rem">
     <div class="card-header">
-      <h3>Ordenes pendientes</h3>
-      <span class="sub">Agendadas y en curso, de la mas proxima a la mas lejana</span>
+      <div class="topbar-search">
+        <i class="fas fa-search"></i>
+        <input
+          placeholder="Tipo, cliente, tecnico o direccion…"
+          [value]="orderSearch()"
+          (input)="orderSearch.set($any($event.target).value)"
+          aria-label="Buscar orden de trabajo"
+        />
+      </div>
+
+      <div class="row-wrap">
+        <select
+          class="form-control"
+          style="width: auto; padding: 0.4rem 2.2rem 0.4rem 0.7rem; font-size: 0.8rem"
+          [value]="orderTypeFilter()"
+          (change)="orderTypeFilter.set($any($event.target).value)"
+          aria-label="Filtrar por tipo de orden"
+        >
+          <option value="ALL">Todos los tipos</option>
+          @for (type of orderTypes; track type.value) {
+            <option [value]="type.value">{{ type.text }}</option>
+          }
+        </select>
+
+        @for (opt of orderStatusFilters; track opt.value) {
+          <button
+            type="button"
+            class="badge"
+            [class.badge-violet]="orderStatusFilter() === opt.value"
+            [class.badge-gray]="orderStatusFilter() !== opt.value"
+            style="cursor: pointer; border: none; font-family: inherit"
+            (click)="orderStatusFilter.set(opt.value)"
+          >
+            {{ opt.text }}
+          </button>
+        }
+      </div>
     </div>
 
-    @if (pendingOrders().length === 0 && !orders.loading()) {
-      <div class="empty">
-        <i class="fas fa-clipboard-check"></i>
-        <div class="empty-title">Nada pendiente en campo</div>
-        <p>Todas las ordenes estan completadas o canceladas.</p>
-      </div>
-    } @else if (pendingOrders().length > 0) {
+    <app-async-state
+      [loading]="orders.loading()"
+      [error]="orders.error()"
+      [empty]="filteredOrders().length === 0"
+      emptyIcon="fas fa-clipboard-check"
+      emptyTitle="Sin ordenes de trabajo"
+      emptyText="Crea una nueva orden de trabajo o ajusta los filtros."
+      (retry)="orders.reload()"
+    />
+
+    @if (!orders.loading() && !orders.error() && filteredOrders().length > 0) {
       <div class="table-wrap">
         <table class="data-table">
           <thead>
@@ -128,12 +188,13 @@
               <th>Direccion</th>
               <th>Tecnico</th>
               <th>Agendada</th>
+              <th>Ejecucion y duracion</th>
               <th>Estado</th>
               <th></th>
             </tr>
           </thead>
           <tbody>
-            @for (order of pendingOrders(); track order.id) {
+            @for (order of ordersPager.items(); track order.id) {
               <tr>
                 <td>
                   <i class="{{ orderIcon(order.type) }}" style="color: var(--brand-1); margin-right: 0.5rem"></i>
@@ -146,22 +207,78 @@
                   {{ order.scheduledAt ? (order.scheduledAt | date: 'dd/MM/yyyy HH:mm') : 'Sin fecha' }}
                 </td>
                 <td>
+                  @if (order.startedAt) {
+                    <div class="cell-sub">
+                      <i class="fas fa-play" style="color: var(--success); margin-right: 0.25rem"></i>
+                      Inicio: {{ order.startedAt | date: 'dd/MM/yyyy HH:mm' }}
+                    </div>
+                    @if (order.finishedAt) {
+                      <div class="cell-sub">
+                        <i class="fas fa-flag-checkered" style="color: var(--brand-1); margin-right: 0.25rem"></i>
+                        Fin: {{ order.finishedAt | date: 'dd/MM/yyyy HH:mm' }}
+                      </div>
+                      <span class="badge badge-violet">
+                        <i class="fas fa-stopwatch"></i>
+                        {{ durationLabel(order.startedAt, order.finishedAt) }}
+                      </span>
+                    } @else {
+                      <span class="badge badge-info">En ejecucion…</span>
+                    }
+                  } @else {
+                    <span class="cell-sub">Pendiente de iniciar</span>
+                  }
+                </td>
+                <td>
                   <span class="badge {{ orderStatusLabel(order.status).badge }}">
                     {{ orderStatusLabel(order.status).text }}
                   </span>
                 </td>
                 <td class="actions">
+                  @if (order.status !== 'COMPLETED' && order.status !== 'CANCELLED') {
+                    @if (!order.startedAt) {
+                      <button
+                        type="button"
+                        class="btn btn-accent btn-sm"
+                        [disabled]="busyId() === order.id"
+                        (click)="startOrder(order)"
+                      >
+                        @if (busyId() === order.id) {
+                          <i class="fas fa-circle-notch" style="animation: spinSlow 1s linear infinite"></i>
+                        } @else {
+                          <i class="fas fa-play"></i> Iniciar orden
+                        }
+                      </button>
+                    } @else if (!order.finishedAt) {
+                      <button
+                        type="button"
+                        class="btn btn-grad btn-sm"
+                        [disabled]="busyId() === order.id"
+                        (click)="finishOrder(order)"
+                      >
+                        @if (busyId() === order.id) {
+                          <i class="fas fa-circle-notch" style="animation: spinSlow 1s linear infinite"></i>
+                        } @else {
+                          <i class="fas fa-flag-checkered"></i> Terminar orden
+                        }
+                      </button>
+                    }
+                  }
                   <button
                     type="button"
-                    class="btn btn-outline btn-sm"
-                    [disabled]="busyId() === order.id"
-                    (click)="complete(order)"
+                    class="btn btn-ghost btn-icon"
+                    title="Editar orden"
+                    (click)="openEditOrder(order)"
                   >
-                    @if (busyId() === order.id) {
-                      <i class="fas fa-circle-notch" style="animation: spinSlow 1s linear infinite"></i>
-                    } @else {
-                      <i class="fas fa-check"></i> Completar
-                    }
+                    <i class="fas fa-pen"></i>
+                  </button>
+                  <button
+                    type="button"
+                    class="btn btn-ghost btn-icon"
+                    style="color: var(--danger)"
+                    title="Eliminar orden"
+                    (click)="confirmDeleteOrder(order)"
+                  >
+                    <i class="fas fa-trash"></i>
                   </button>
                 </td>
               </tr>
@@ -169,6 +286,7 @@
           </tbody>
         </table>
       </div>
+      <app-table-pager [pager]="ordersPager" />
     }
   </div>
 </div>
@@ -204,8 +322,12 @@
   </app-modal>
 }
 
-@if (addingOrder()) {
-  <app-modal title="Orden de trabajo" wide (close)="closeModals()">
+@if (orderModalOpen()) {
+  <app-modal
+    [title]="editingOrder() ? 'Editar orden de trabajo' : 'Nueva orden de trabajo'"
+    wide
+    (close)="closeModals()"
+  >
     <form [formGroup]="orderForm" (ngSubmit)="saveOrder()" id="order-form">
       <div class="form-row">
         <div class="form-group">
@@ -268,6 +390,17 @@
         </div>
       </div>
 
+      @if (editingOrder()) {
+        <div class="form-group">
+          <label for="wo-status">Estado</label>
+          <select id="wo-status" class="form-control" formControlName="status">
+            @for (st of editableOrderStatuses; track st.value) {
+              <option [value]="st.value">{{ st.text }}</option>
+            }
+          </select>
+        </div>
+      }
+
       <div class="form-group">
         <label for="wo-address">Direccion de la visita</label>
         <input id="wo-address" class="form-control" formControlName="address" placeholder="Cra 12 #45-23" />
@@ -286,9 +419,34 @@
       >
         @if (saving()) {
           <i class="fas fa-circle-notch" style="animation: spinSlow 1s linear infinite"></i>
-          Agendando…
+          Guardando…
         } @else {
-          <i class="fas fa-calendar-check"></i> Agendar
+          <i class="fas fa-calendar-check"></i>
+          {{ editingOrder() ? 'Guardar cambios' : 'Agendar orden' }}
+        }
+      </button>
+    </ng-container>
+  </app-modal>
+}
+
+@if (deletingOrder(); as target) {
+  <app-modal title="Eliminar orden de trabajo" (close)="closeModals()">
+    <div class="alert alert-danger">
+      <i class="fas fa-triangle-exclamation"></i>
+      <span>
+        Vas a eliminar la orden de <b>{{ orderTypeLabel(target.type).text }}</b> para
+        <b>{{ clientName(target.clientId) }}</b>. Esta accion no se puede deshacer.
+      </span>
+    </div>
+
+    <ng-container modalFooter>
+      <button type="button" class="btn btn-outline" (click)="closeModals()">Cancelar</button>
+      <button appRipple type="button" class="btn btn-danger" [disabled]="saving()" (click)="removeOrder()">
+        @if (saving()) {
+          <i class="fas fa-circle-notch" style="animation: spinSlow 1s linear infinite"></i>
+          Eliminando…
+        } @else {
+          <i class="fas fa-trash"></i> Eliminar orden
         }
       </button>
     </ng-container>

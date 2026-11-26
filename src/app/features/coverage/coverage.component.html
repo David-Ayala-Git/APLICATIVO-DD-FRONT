@@ -1,7 +1,7 @@
 <div class="page">
   <app-page-head
     title="Cobertura y mapas"
-    subtitle="Nodos, cajas NAP, sitios de OLT y torres registrados en la red"
+    subtitle="Mapa interactivo de nodos, cajas NAP, sitios de OLT y torres registradas en la red"
   >
     <button
       appRipple
@@ -21,23 +21,46 @@
     <div class="card">
       <div class="card-header">
         <div>
-          <h3>Plano de la red</h3>
-          <div class="sub">Posiciones relativas segun la latitud y longitud registradas</div>
+          <h3>Mapa de cobertura</h3>
+          <div class="sub">
+            @if (pickedCoords(); as coords) {
+              Punto seleccionado: <span class="mono">{{ coords.lat }}, {{ coords.lon }}</span>
+              <button
+                type="button"
+                class="btn btn-ghost btn-sm"
+                style="padding: 0.15rem 0.5rem; margin-left: 0.35rem"
+                (click)="openCreate(coords.lat, coords.lon)"
+              >
+                <i class="fas fa-plus"></i> Crear nodo aqui
+              </button>
+            } @else {
+              Haz clic sobre el mapa para capturar coordenadas o selecciona un marcador
+            }
+          </div>
         </div>
-        <span class="badge badge-info">{{ nodes.value().length }} nodos</span>
+        <div class="row-wrap">
+          @if (leafletReady()) {
+            <button type="button" class="btn btn-outline btn-sm" (click)="recenterMap()">
+              <i class="fas fa-crosshairs"></i> Centrar
+            </button>
+          }
+          <span class="badge badge-info">{{ filtered().length }} nodos</span>
+        </div>
       </div>
 
-      @if (nodes.loading() || nodes.error()) {
+      @if (nodes.error()) {
         <app-async-state
-          [loading]="nodes.loading()"
+          [loading]="false"
           [error]="nodes.error()"
           (retry)="nodes.reload()"
         />
+      } @else if (leafletReady()) {
+        <div class="coverage-map-leaflet" #mapHost aria-label="Mapa interactivo de cobertura"></div>
       } @else if (plotted().length === 0) {
         <div class="empty">
           <i class="fas fa-map-location-dot"></i>
           <div class="empty-title">Sin nodos registrados</div>
-          <p>Registra el primer POP o caja NAP para dibujar el plano de cobertura.</p>
+          <p>Registra el primer POP o caja NAP para visualizar la cobertura.</p>
         </div>
       } @else {
         <div class="coverage-map">
@@ -100,7 +123,7 @@
       <div class="card-body">
         @for (row of byType(); track row.value) {
           <div class="list-row">
-            <div class="dot-ico" style="background: var(--purple-light); color: #7c3aed">
+            <div class="dot-ico" [style.background]="row.color + '1a'" [style.color]="row.color">
               <i class="{{ row.icon }}"></i>
             </div>
             <div class="flex-1">
@@ -116,9 +139,58 @@
     </div>
   </div>
 
-  @if (nodes.value().length > 0) {
-    <div class="card" style="margin-top: 1rem">
-      <div class="card-header"><h3>Detalle de nodos</h3></div>
+  <div class="card" style="margin-top: 1rem">
+    <div class="card-header">
+      <div class="topbar-search">
+        <i class="fas fa-search"></i>
+        <input
+          placeholder="Buscar nodo por nombre, tipo o coordenadas…"
+          [value]="search()"
+          (input)="search.set($any($event.target).value)"
+          aria-label="Buscar nodo"
+        />
+      </div>
+
+      <div class="row-wrap">
+        <select
+          class="form-control"
+          style="width: auto; padding: 0.4rem 2.2rem 0.4rem 0.7rem; font-size: 0.8rem"
+          [value]="typeFilter()"
+          (change)="typeFilter.set($any($event.target).value)"
+          aria-label="Filtrar por tipo de nodo"
+        >
+          <option value="ALL">Todos los tipos</option>
+          @for (type of nodeTypes; track type.value) {
+            <option [value]="type.value">{{ type.text }}</option>
+          }
+        </select>
+
+        @for (opt of statusOptions; track opt.value) {
+          <button
+            type="button"
+            class="badge"
+            [class.badge-violet]="statusFilter() === opt.value"
+            [class.badge-gray]="statusFilter() !== opt.value"
+            style="cursor: pointer; border: none; font-family: inherit"
+            (click)="statusFilter.set(opt.value)"
+          >
+            {{ opt.text }}
+          </button>
+        }
+      </div>
+    </div>
+
+    <app-async-state
+      [loading]="nodes.loading()"
+      [error]="nodes.error()"
+      [empty]="filtered().length === 0"
+      emptyIcon="fas fa-map-location-dot"
+      emptyTitle="Sin nodos que coincidan"
+      emptyText="Registra el primer POP o caja NAP o ajusta los filtros."
+      (retry)="nodes.reload()"
+    />
+
+    @if (!nodes.loading() && !nodes.error() && filtered().length > 0) {
       <div class="table-wrap">
         <table class="data-table">
           <thead>
@@ -128,27 +200,65 @@
               <th>Coordenadas</th>
               <th>Estado</th>
               <th>Registrado</th>
+              <th></th>
             </tr>
           </thead>
           <tbody>
-            @for (node of nodes.value(); track node.id) {
+            @for (node of pager.items(); track node.id) {
               <tr>
                 <td class="cell-main">{{ node.name }}</td>
-                <td><span class="badge {{ typeLabel(node.type).badge }}">{{ typeLabel(node.type).text }}</span></td>
+                <td>
+                  <span class="badge {{ typeLabel(node.type).badge }}">
+                    {{ typeLabel(node.type).text }}
+                  </span>
+                </td>
                 <td class="cell-mono">{{ node.latitude }}, {{ node.longitude }}</td>
                 <td><app-status-badge [label]="statusLabel(node.status)" /></td>
                 <td class="cell-sub">{{ node.createdAt | date: 'dd/MM/yyyy' }}</td>
+                <td class="actions">
+                  @if (leafletReady()) {
+                    <button
+                      type="button"
+                      class="btn btn-ghost btn-icon"
+                      title="Ubicar en el mapa"
+                      (click)="focusNode(node)"
+                    >
+                      <i class="fas fa-location-crosshairs"></i>
+                    </button>
+                  }
+                  <button
+                    type="button"
+                    class="btn btn-ghost btn-icon"
+                    title="Editar nodo"
+                    (click)="openEdit(node)"
+                  >
+                    <i class="fas fa-pen"></i>
+                  </button>
+                  <button
+                    type="button"
+                    class="btn btn-ghost btn-icon"
+                    style="color: var(--danger)"
+                    title="Eliminar nodo"
+                    (click)="confirmDelete(node)"
+                  >
+                    <i class="fas fa-trash"></i>
+                  </button>
+                </td>
               </tr>
             }
           </tbody>
         </table>
       </div>
-    </div>
-  }
+      <app-table-pager [pager]="pager" />
+    }
+  </div>
 </div>
 
-@if (creating()) {
-  <app-modal title="Registrar nodo de cobertura" (close)="close()">
+@if (modalOpen()) {
+  <app-modal
+    [title]="editing() ? 'Editar nodo de cobertura' : 'Registrar nodo de cobertura'"
+    (close)="close()"
+  >
     <form [formGroup]="form" (ngSubmit)="save()" id="node-form">
       <div class="form-group">
         <label for="n-name">Nombre</label>
@@ -158,33 +268,45 @@
         }
       </div>
 
-      <div class="form-group">
-        <label for="n-type">Tipo</label>
-        <select id="n-type" class="form-control" formControlName="type">
-          @for (type of nodeTypes; track type.value) {
-            <option [value]="type.value">{{ type.text }}</option>
-          }
-        </select>
+      <div class="form-row">
+        <div class="form-group">
+          <label for="n-type">Tipo</label>
+          <select id="n-type" class="form-control" formControlName="type">
+            @for (type of nodeTypes; track type.value) {
+              <option [value]="type.value">{{ type.text }}</option>
+            }
+          </select>
+        </div>
+
+        @if (editing()) {
+          <div class="form-group">
+            <label for="n-status">Estado</label>
+            <select id="n-status" class="form-control" formControlName="status">
+              <option value="ACTIVE">Activo</option>
+              <option value="INACTIVE">Inactivo</option>
+            </select>
+          </div>
+        }
       </div>
 
       <div class="form-row">
         <div class="form-group">
           <label for="n-lat">Latitud</label>
-          <input id="n-lat" class="form-control mono" type="number" step="0.0001" formControlName="latitude" />
+          <input id="n-lat" class="form-control mono" type="number" step="0.000001" formControlName="latitude" />
           @if (form.controls.latitude.touched && form.controls.latitude.invalid) {
             <div class="field-error">Latitud entre -90 y 90.</div>
           }
         </div>
         <div class="form-group">
           <label for="n-lon">Longitud</label>
-          <input id="n-lon" class="form-control mono" type="number" step="0.0001" formControlName="longitude" />
+          <input id="n-lon" class="form-control mono" type="number" step="0.000001" formControlName="longitude" />
           @if (form.controls.longitude.touched && form.controls.longitude.invalid) {
             <div class="field-error">Longitud entre -180 y 180.</div>
           }
         </div>
       </div>
 
-      <p class="hint">Los valores por defecto corresponden al centro de Pasto, Narino.</p>
+      <p class="hint">Puedes hacer clic en cualquier punto del mapa para capturar las coordenadas exactas.</p>
     </form>
 
     <ng-container modalFooter>
@@ -194,7 +316,30 @@
           <i class="fas fa-circle-notch" style="animation: spinSlow 1s linear infinite"></i>
           Guardando…
         } @else {
-          <i class="fas fa-check"></i> Registrar nodo
+          <i class="fas fa-check"></i> {{ editing() ? 'Guardar cambios' : 'Registrar nodo' }}
+        }
+      </button>
+    </ng-container>
+  </app-modal>
+}
+
+@if (deleting(); as target) {
+  <app-modal title="Eliminar nodo de cobertura" (close)="close()">
+    <div class="alert alert-danger">
+      <i class="fas fa-triangle-exclamation"></i>
+      <span>
+        Vas a eliminar el nodo <b>{{ target.name }}</b> ({{ typeLabel(target.type).text }}). Esta accion no se puede deshacer.
+      </span>
+    </div>
+
+    <ng-container modalFooter>
+      <button type="button" class="btn btn-outline" (click)="close()">Cancelar</button>
+      <button appRipple type="button" class="btn btn-danger" [disabled]="saving()" (click)="removeNode()">
+        @if (saving()) {
+          <i class="fas fa-circle-notch" style="animation: spinSlow 1s linear infinite"></i>
+          Eliminando…
+        } @else {
+          <i class="fas fa-trash"></i> Eliminar nodo
         }
       </button>
     </ng-container>

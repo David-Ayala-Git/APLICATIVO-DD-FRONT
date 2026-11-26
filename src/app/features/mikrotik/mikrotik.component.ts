@@ -2,7 +2,7 @@ import { Component, computed, inject, signal } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 
 import { NetworkApi } from '../../core/api';
-import { MikrotikRouter, ROUTEROS_ID_PATTERN } from '../../core/models';
+import { MikrotikRouter, ROUTEROS_ID_PATTERN, RouterStatus } from '../../core/models';
 import { collection } from '../../core/state/collection';
 import { describeHttpError } from '../../core/ui/http-error';
 import { ToastService } from '../../core/ui/toast.service';
@@ -11,10 +11,14 @@ import { ModalComponent } from '../../shared/components/modal.component';
 import { PageHeadComponent } from '../../shared/components/page-head.component';
 import { StatCardComponent } from '../../shared/components/stat-card.component';
 import { StatusBadgeComponent } from '../../shared/components/status-badge.component';
+import { TablePagerComponent } from '../../shared/components/table-pager.component';
 import { RippleDirective } from '../../shared/directives/ripple.directive';
+import { normalize } from '../../shared/format';
 import { routerStatusLabel } from '../../shared/labels';
+import { paginate } from '../../shared/pagination';
 
 type Action = 'cut' | 'enable' | 'queue';
+type StatusFilter = RouterStatus | 'ALL';
 
 /**
  * Routers MikroTik y operaciones sobre un cliente via RouterOS API.
@@ -30,6 +34,7 @@ type Action = 'cut' | 'enable' | 'queue';
     StatusBadgeComponent,
     AsyncStateComponent,
     ModalComponent,
+    TablePagerComponent,
     RippleDirective,
   ],
   templateUrl: './mikrotik.component.html',
@@ -41,9 +46,36 @@ export class MikrotikComponent {
 
   protected readonly routers = collection(() => this.api.routers(), [] as MikrotikRouter[]);
 
+  protected readonly search = signal('');
+  protected readonly statusFilter = signal<StatusFilter>('ALL');
   protected readonly addingRouter = signal(false);
   protected readonly action = signal<Action | null>(null);
   protected readonly saving = signal(false);
+
+  protected readonly statusOptions: { value: StatusFilter; text: string }[] = [
+    { value: 'ALL', text: 'Todos' },
+    { value: 'ONLINE', text: 'En linea' },
+    { value: 'OFFLINE', text: 'Fuera de linea' },
+    { value: 'ERROR', text: 'Error' },
+  ];
+
+  protected readonly filteredRouters = computed(() => {
+    const term = normalize(this.search());
+    const status = this.statusFilter();
+    return this.routers.value().filter((r) => {
+      if (status !== 'ALL' && r.status !== status) {
+        return false;
+      }
+      if (!term) {
+        return true;
+      }
+      return [r.name, r.host, r.apiUser, r.model]
+        .map((v) => normalize(v))
+        .some((v) => v.includes(term));
+    });
+  });
+
+  protected readonly pager = paginate(this.filteredRouters, 10);
 
   protected readonly routerForm = this.fb.nonNullable.group({
     name: ['', Validators.required],

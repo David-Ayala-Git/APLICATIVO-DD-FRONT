@@ -3,7 +3,7 @@ import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { catchError, of } from 'rxjs';
 
 import { CrmApi, NetworkApi } from '../../core/api';
-import { Client, Onu, OnuVendor } from '../../core/models';
+import { Client, Onu, OnuStatus, OnuVendor } from '../../core/models';
 import { collection } from '../../core/state/collection';
 import { describeHttpError } from '../../core/ui/http-error';
 import { ToastService } from '../../core/ui/toast.service';
@@ -12,9 +12,13 @@ import { ModalComponent } from '../../shared/components/modal.component';
 import { PageHeadComponent } from '../../shared/components/page-head.component';
 import { StatCardComponent } from '../../shared/components/stat-card.component';
 import { StatusBadgeComponent } from '../../shared/components/status-badge.component';
+import { TablePagerComponent } from '../../shared/components/table-pager.component';
 import { RippleDirective } from '../../shared/directives/ripple.directive';
 import { normalize } from '../../shared/format';
 import { onuStatusLabel, onuVendorLabel, rxPowerLabel } from '../../shared/labels';
+import { paginate } from '../../shared/pagination';
+
+type StatusFilter = OnuStatus | 'ALL';
 
 /** GPON: inventario de ONUs, autorizacion y lectura de potencia optica. */
 @Component({
@@ -26,6 +30,7 @@ import { onuStatusLabel, onuVendorLabel, rxPowerLabel } from '../../shared/label
     StatusBadgeComponent,
     AsyncStateComponent,
     ModalComponent,
+    TablePagerComponent,
     RippleDirective,
   ],
   templateUrl: './gpon.component.html',
@@ -43,11 +48,19 @@ export class GponComponent {
   );
 
   protected readonly search = signal('');
+  protected readonly statusFilter = signal<StatusFilter>('ALL');
   protected readonly onlyPending = signal(false);
   protected readonly registering = signal(false);
   protected readonly authorizing = signal<Onu | null>(null);
   protected readonly readingSignal = signal<Onu | null>(null);
   protected readonly saving = signal(false);
+
+  protected readonly statusOptions: { value: StatusFilter; text: string }[] = [
+    { value: 'ALL', text: 'Todas' },
+    { value: 'ONLINE', text: 'En linea' },
+    { value: 'LOS', text: 'LOS' },
+    { value: 'UNAUTHORIZED', text: 'Sin autorizar' },
+  ];
 
   protected readonly vendors: { value: OnuVendor; text: string }[] = [
     { value: 'HUAWEI', text: 'Huawei' },
@@ -91,8 +104,12 @@ export class GponComponent {
   protected readonly filtered = computed(() => {
     const term = normalize(this.search());
     const pendingOnly = this.onlyPending();
+    const status = this.statusFilter();
     return this.onus.value().filter((onu) => {
       if (pendingOnly && onu.status !== 'UNAUTHORIZED') {
+        return false;
+      }
+      if (status !== 'ALL' && onu.status !== status) {
         return false;
       }
       if (!term) {
@@ -104,6 +121,8 @@ export class GponComponent {
         .some((v) => v.includes(term));
     });
   });
+
+  protected readonly pager = paginate(this.filtered, 10);
 
   protected clientName(clientId: string | null): string {
     if (!clientId) {

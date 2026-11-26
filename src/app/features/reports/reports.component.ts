@@ -11,8 +11,10 @@ import { AsyncStateComponent } from '../../shared/components/async-state.compone
 import { BarChartComponent, BarDatum } from '../../shared/components/bar-chart.component';
 import { PageHeadComponent } from '../../shared/components/page-head.component';
 import { StatCardComponent } from '../../shared/components/stat-card.component';
+import { TablePagerComponent } from '../../shared/components/table-pager.component';
 import { RippleDirective } from '../../shared/directives/ripple.directive';
-import { cop, copCompact, monthShort, percent, periodLabel } from '../../shared/format';
+import { cop, copCompact, monthShort, normalize, percent, periodLabel } from '../../shared/format';
+import { paginate } from '../../shared/pagination';
 
 /** Reportes ejecutivos: MRR, ARPU, churn y la serie historica. dd_ms_reports. */
 @Component({
@@ -23,6 +25,7 @@ import { cop, copCompact, monthShort, percent, periodLabel } from '../../shared/
     StatCardComponent,
     BarChartComponent,
     AsyncStateComponent,
+    TablePagerComponent,
     RippleDirective,
   ],
   templateUrl: './reports.component.html',
@@ -43,11 +46,25 @@ export class ReportsComponent {
   );
 
   protected readonly refreshing = signal(false);
+  protected readonly search = signal('');
 
   /** Historial de mas antiguo a mas reciente, que es como se lee una serie. */
   protected readonly ordered = computed(() =>
     [...this.history.value()].sort((a, b) => (a.period > b.period ? 1 : -1)),
   );
+
+  protected readonly filteredHistory = computed(() => {
+    const term = normalize(this.search());
+    const rows = [...this.ordered()].reverse();
+    if (!term) {
+      return rows;
+    }
+    return rows.filter((r) =>
+      [r.period, periodLabel(r.period)].map((v) => normalize(v)).some((v) => v.includes(term)),
+    );
+  });
+
+  protected readonly historyPager = paginate(this.filteredHistory, 10);
 
   protected readonly clientBars = computed<BarDatum[]>(() =>
     this.ordered().map((r) => ({

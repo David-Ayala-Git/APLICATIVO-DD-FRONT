@@ -12,8 +12,10 @@ import { AsyncStateComponent } from '../../shared/components/async-state.compone
 import { ModalComponent } from '../../shared/components/modal.component';
 import { PageHeadComponent } from '../../shared/components/page-head.component';
 import { StatCardComponent } from '../../shared/components/stat-card.component';
+import { TablePagerComponent } from '../../shared/components/table-pager.component';
 import { RippleDirective } from '../../shared/directives/ripple.directive';
-import { cop, copCompact } from '../../shared/format';
+import { cop, copCompact, normalize } from '../../shared/format';
+import { paginate } from '../../shared/pagination';
 
 interface DebtRow {
   client: Client;
@@ -38,6 +40,7 @@ interface DebtRow {
     StatCardComponent,
     AsyncStateComponent,
     ModalComponent,
+    TablePagerComponent,
     RippleDirective,
   ],
   templateUrl: './activations.component.html',
@@ -55,6 +58,9 @@ export class ActivationsComponent {
     () => this.network.routers().pipe(catchError(() => of([] as MikrotikRouter[]))),
     [] as MikrotikRouter[],
   );
+
+  protected readonly debtorSearch = signal('');
+  protected readonly restoreSearch = signal('');
 
   /** Accion en curso: corte o reactivacion sobre un cliente concreto. */
   protected readonly networkAction = signal<{ mode: 'cut' | 'enable'; client: Client } | null>(null);
@@ -103,11 +109,39 @@ export class ActivationsComponent {
     return rows.sort((a, b) => b.daysOverdue - a.daysOverdue);
   });
 
+  protected readonly filteredDebtors = computed(() => {
+    const term = normalize(this.debtorSearch());
+    if (!term) {
+      return this.debtors();
+    }
+    return this.debtors().filter((row) =>
+      [row.client.fullName, row.client.document, row.client.ipAddress]
+        .map((v) => normalize(v))
+        .some((v) => v.includes(term)),
+    );
+  });
+
+  protected readonly debtorsPager = paginate(this.filteredDebtors, 10);
+
   /** Suspendidos que ya no tienen facturas vencidas: candidatos a reactivar. */
   protected readonly readyToRestore = computed(() => {
     const debtorIds = new Set(this.debtors().map((d) => d.client.id));
     return this.clients.value().filter((c) => c.status === 'SUSPENDED' && !debtorIds.has(c.id));
   });
+
+  protected readonly filteredRestore = computed(() => {
+    const term = normalize(this.restoreSearch());
+    if (!term) {
+      return this.readyToRestore();
+    }
+    return this.readyToRestore().filter((c) =>
+      [c.fullName, c.document, c.ipAddress, c.onuSerial]
+        .map((v) => normalize(v))
+        .some((v) => v.includes(term)),
+    );
+  });
+
+  protected readonly restorePager = paginate(this.filteredRestore, 10);
 
   protected openNetworkAction(mode: 'cut' | 'enable', client: Client): void {
     this.actionForm.reset({

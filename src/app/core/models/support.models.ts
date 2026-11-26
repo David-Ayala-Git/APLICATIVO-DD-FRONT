@@ -14,6 +14,8 @@ export interface Ticket {
   status: TicketStatus;
   assignedTo: string | null;
   slaDueAt: string | null;
+  startedAt?: string | null;
+  finishedAt?: string | null;
   createdAt: string;
 }
 
@@ -53,6 +55,8 @@ export interface WorkOrder {
   scheduledAt: string | null;
   address: string | null;
   status: WorkOrderStatus;
+  startedAt?: string | null;
+  finishedAt?: string | null;
   createdAt: string;
 }
 
@@ -64,4 +68,14 @@ export interface CreateWorkOrderRequest {
   /** ISO 8601 con offset (OffsetDateTime en el backend). */
   scheduledAt?: string | null;
   address?: string | null;
+}
+
+export interface UpdateWorkOrderRequest {
+  clientId: string;
+  ticketId?: string | null;
+  type: WorkOrderType;
+  technicianId?: string | null;
+  scheduledAt?: string | null;
+  address?: string | null;
+  status?: WorkOrderStatus;
 }

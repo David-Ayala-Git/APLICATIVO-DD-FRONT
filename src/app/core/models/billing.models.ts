@@ -34,6 +34,13 @@ export interface CreateInvoiceRequest {
   dueDate: string;
 }
 
+export interface UpdateInvoiceRequest {
+  planId?: string | null;
+  amount: number;
+  dueDate: string;
+  status?: InvoiceStatus;
+}
+
 export interface BillingRunResult {
   period: string;
   clientsEvaluated: number;
@@ -57,5 +64,12 @@ export interface ManualPaymentRequest {
   amount: number;
   method: PaymentMethod;
   /** Recibo o comprobante: el backend no registra dos veces la misma referencia. */
+  externalReference: string;
+}
+
+export interface UpdatePaymentRequest {
+  amount: number;
+  method: PaymentMethod;
+  status: PaymentStatus;
   externalReference: string;
 }
