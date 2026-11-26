@@ -90,81 +90,90 @@
         </div>
       </div>
     } @else {
-      <div class="plan-glass-grid">
-        @for (row of pager.items(); track row.plan.id) {
-          <section class="plan-glass-card" [class.is-disabled]="!row.enabled">
-            <div class="plan-glass-top">
-              <span class="plan-glass-store">
+      <div class="plan-glass-stage">
+        <div class="plan-glass-bg" aria-hidden="true">
+          <div class="plan-glass-blob plan-glass-b1"></div>
+          <div class="plan-glass-blob plan-glass-b2"></div>
+          <div class="plan-glass-blob plan-glass-b3"></div>
+        </div>
+
+        <div class="plan-glass-grid">
+          @for (row of pager.items(); track row.plan.id) {
+            <section class="plan-glass-card" [class.is-disabled]="!row.enabled">
+              <div class="plan-glass-top">
+                <h3 class="plan-glass-title">{{ row.plan.name }}</h3>
+                <span
+                  class="plan-glass-status"
+                  [class.is-off]="!row.enabled"
+                >
+                  <i class="fas fa-circle"></i>
+                  {{ row.enabled ? 'Activo' : 'Inactivo' }}
+                </span>
+              </div>
+
+              <p class="plan-glass-store">
                 <i class="fas fa-wifi"></i>
                 {{ row.label.text }} · INTERNET
-              </span>
-              @if (row.enabled) {
-                <span class="badge badge-success"><i class="fas fa-circle"></i> Activo</span>
-              } @else {
-                <span class="badge badge-warning">Deshabilitado</span>
-              }
-            </div>
+              </p>
 
-            <h3 class="plan-glass-title">{{ row.plan.name }}</h3>
-            <p class="plan-glass-sub">
-              {{ row.plan.downMbps }}&#8595; / {{ row.plan.upMbps }}&#8593; Mbps · Suscripcion mensual
-            </p>
+              <p class="plan-glass-sub">
+                {{ row.plan.downMbps }}&#8595; / {{ row.plan.upMbps }}&#8593; Mbps · Mensual
+              </p>
 
-            <ul class="plan-glass-items">
-              <li>
-                <span>Velocidad de bajada</span>
-                <b class="mono">{{ row.plan.downMbps }} Mbps</b>
-              </li>
-              <li>
-                <span>Velocidad de subida</span>
-                <b class="mono">{{ row.plan.upMbps }} Mbps</b>
-              </li>
-              <li>
-                <span>Clientes asignados</span>
-                <b>{{ row.clients }} cliente(s)</b>
-              </li>
-              <li>
-                <span>Ingreso mensual estimado</span>
-                <b>{{ cop(row.plan.price * row.clients) }}</b>
-              </li>
-            </ul>
+              <ul class="plan-glass-items">
+                <li>
+                  <div>
+                    Velocidad
+                    <small>Bajada / Subida</small>
+                  </div>
+                  <span class="mono">{{ row.plan.downMbps }} / {{ row.plan.upMbps }}M</span>
+                </li>
+                <li>
+                  <div>
+                    Clientes activos
+                    <small>Est. {{ cop(row.plan.price * row.clients) }}/mes</small>
+                  </div>
+                  <span>{{ row.clients }}</span>
+                </li>
+              </ul>
 
-            <div class="plan-glass-total">
-              <span>Tarifa mensual</span>
-              <b>{{ cop(row.plan.price) }} <small>/mes</small></b>
-            </div>
-
-            @if (canManagePlans()) {
-              <div class="plan-glass-actions">
-                <button
-                  type="button"
-                  class="plan-glass-pill-btn"
-                  (click)="openEdit(row.plan)"
-                >
-                  <i class="fas fa-pen"></i> Editar plan
-                </button>
-                <button
-                  type="button"
-                  class="plan-glass-icon-btn"
-                  [title]="row.enabled ? 'Deshabilitar plan' : 'Habilitar plan'"
-                  [disabled]="busyPlanId() === row.plan.id"
-                  (click)="toggleStatus(row.plan)"
-                >
-                  <i class="fas" [class.fa-ban]="row.enabled" [class.fa-circle-check]="!row.enabled"></i>
-                </button>
-                <button
-                  type="button"
-                  class="plan-glass-icon-btn danger"
-                  title="Eliminar plan"
-                  [disabled]="busyPlanId() === row.plan.id"
-                  (click)="deletePlan(row.plan)"
-                >
-                  <i class="fas fa-trash"></i>
-                </button>
+              <div class="plan-glass-total">
+                <span>Total</span>
+                <b>{{ cop(row.plan.price) }}<small>/mes</small></b>
               </div>
-            }
-          </section>
-        }
+
+              @if (canManagePlans()) {
+                <div class="plan-glass-actions">
+                  <button
+                    type="button"
+                    class="plan-glass-pill-btn"
+                    (click)="openEdit(row.plan)"
+                  >
+                    <i class="fas fa-pen"></i> Editar
+                  </button>
+                  <button
+                    type="button"
+                    class="plan-glass-icon-btn"
+                    [title]="row.enabled ? 'Deshabilitar plan' : 'Habilitar plan'"
+                    [disabled]="busyPlanId() === row.plan.id"
+                    (click)="toggleStatus(row.plan)"
+                  >
+                    <i class="fas" [class.fa-ban]="row.enabled" [class.fa-circle-check]="!row.enabled"></i>
+                  </button>
+                  <button
+                    type="button"
+                    class="plan-glass-icon-btn danger"
+                    title="Eliminar plan"
+                    [disabled]="busyPlanId() === row.plan.id"
+                    (click)="deletePlan(row.plan)"
+                  >
+                    <i class="fas fa-trash"></i>
+                  </button>
+                </div>
+              }
+            </section>
+          }
+        </div>
       </div>
 
       <div class="card" style="margin-top: 1rem">
