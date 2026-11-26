@@ -265,7 +265,12 @@
                 </td>
                 <td>
                   @if (node.type === 'NAP') {
-                    <div class="nap-meter">
+                    <div
+                      class="nap-meter"
+                      style="cursor: pointer"
+                      title="Clic para ver y asignar clientes a los puertos de esta Caja NAP"
+                      (click)="openNapPorts(node)"
+                    >
                       <div class="nap-meter-head">
                         <span class="badge {{ napOccupancyMeta(node).badge }}">
                           {{ napOccupancyMeta(node).text }}
@@ -290,8 +295,8 @@
                   @if (node.type === 'NAP') {
                     <button
                       type="button"
-                      class="btn btn-outline btn-sm"
-                      title="Asignar o liberar clientes en puertos NAP"
+                      class="btn btn-accent btn-sm"
+                      title="Asignar o liberar clientes en los puertos de esta Caja NAP"
                       (click)="openNapPorts(node)"
                     >
                       <i class="fas fa-plug"></i> Puertos
@@ -352,23 +357,19 @@
       <div class="form-row">
         <div class="form-group">
           <label for="n-type">Tipo</label>
-          <select id="n-type" class="form-control" formControlName="type">
+          <select
+            id="n-type"
+            class="form-control"
+            formControlName="type"
+            (change)="onNodeTypeChange($any($event.target).value)"
+          >
             @for (type of nodeTypes; track type.value) {
               <option [value]="type.value">{{ type.text }}</option>
             }
           </select>
         </div>
 
-        @if (form.controls.type.value === 'NAP') {
-          <div class="form-group">
-            <label for="n-cap">Capacidad de Caja NAP</label>
-            <select id="n-cap" class="form-control" formControlName="napCapacity">
-              @for (cap of napCapacities; track cap.value) {
-                <option [ngValue]="cap.value">{{ cap.text }}</option>
-              }
-            </select>
-          </div>
-        } @else if (editing()) {
+        @if (editing()) {
           <div class="form-group">
             <label for="n-status">Estado</label>
             <select id="n-status" class="form-control" formControlName="status">
@@ -379,13 +380,26 @@
         }
       </div>
 
-      @if (editing() && form.controls.type.value === 'NAP') {
+      @if (selectedNodeType() === 'NAP') {
         <div class="form-group">
-          <label for="n-status-nap">Estado</label>
-          <select id="n-status-nap" class="form-control" formControlName="status">
-            <option value="ACTIVE">Activo</option>
-            <option value="INACTIVE">Inactivo</option>
-          </select>
+          <label>Capacidad de la Caja NAP</label>
+          <div class="row-wrap" style="gap: 0.5rem">
+            @for (cap of napCapacities; track cap.value) {
+              <button
+                type="button"
+                class="btn btn-sm"
+                style="flex: 1; justify-content: center"
+                [class.btn-grad]="selectedNapCapacity() === cap.value"
+                [class.btn-outline]="selectedNapCapacity() !== cap.value"
+                (click)="setNapCapacity(cap.value)"
+              >
+                <i class="fas fa-box"></i> {{ cap.text }}
+              </button>
+            }
+          </div>
+          <div class="hint">
+            Selecciona si esta caja NAP tiene 8 puertos (1x8) o 16 puertos (1x16) para controlar disponibilidad.
+          </div>
         </div>
       }
 
@@ -475,7 +489,7 @@
           <button
             type="button"
             class="nap-port-tile is-free"
-            [class.is-selected]="assignForm.controls.portNumber.value === '' + slot.portNumber"
+            [class.is-selected]="selectedPort() === '' + slot.portNumber"
             style="text-align: left; font-family: inherit"
             (click)="pickPort(slot.portNumber)"
           >
@@ -535,7 +549,12 @@
 
           <div class="form-group">
             <label for="nap-port">Puerto</label>
-            <select id="nap-port" class="form-control mono" formControlName="portNumber">
+            <select
+              id="nap-port"
+              class="form-control mono"
+              formControlName="portNumber"
+              (change)="onPortSelectChange($any($event.target).value)"
+            >
               <option value="">Automatico (siguiente libre)</option>
               @for (p of freePortsForNap(); track p) {
                 <option [value]="p">Puerto #{{ p }}</option>

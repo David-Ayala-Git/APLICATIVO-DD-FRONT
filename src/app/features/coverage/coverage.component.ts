@@ -137,6 +137,9 @@ export class CoverageComponent {
   protected readonly editing = signal<NetworkNode | null>(null);
   protected readonly deleting = signal<NetworkNode | null>(null);
   protected readonly managingNapId = signal<string | null>(null);
+  protected readonly selectedNodeType = signal<NodeType>('NAP');
+  protected readonly selectedNapCapacity = signal<NapCapacity>(8);
+  protected readonly selectedPort = signal('');
   protected readonly clientSearch = signal('');
   protected readonly saving = signal(false);
   protected readonly busyAssignmentId = signal<string | null>(null);
@@ -393,6 +396,8 @@ export class CoverageComponent {
   protected openCreate(lat?: number, lon?: number): void {
     const picked = this.pickedCoords();
     this.editing.set(null);
+    this.selectedNodeType.set('NAP');
+    this.selectedNapCapacity.set(8);
     this.form.reset({
       name: '',
       type: 'NAP',
@@ -405,11 +410,14 @@ export class CoverageComponent {
   }
 
   protected openEdit(node: NetworkNode): void {
+    const cap = (node.napCapacity ?? 8) as NapCapacity;
     this.editing.set(node);
+    this.selectedNodeType.set(node.type);
+    this.selectedNapCapacity.set(cap);
     this.form.reset({
       name: node.name,
       type: node.type,
-      napCapacity: (node.napCapacity ?? 8) as NapCapacity,
+      napCapacity: cap,
       latitude: node.latitude,
       longitude: node.longitude,
       status: node.status,
@@ -417,9 +425,20 @@ export class CoverageComponent {
     this.modalOpen.set(true);
   }
 
+  protected onNodeTypeChange(type: NodeType): void {
+    this.selectedNodeType.set(type);
+    this.form.controls.type.setValue(type);
+  }
+
+  protected setNapCapacity(cap: NapCapacity): void {
+    this.selectedNapCapacity.set(cap);
+    this.form.controls.napCapacity.setValue(cap);
+  }
+
   protected openNapPorts(node: NetworkNode): void {
     this.managingNapId.set(node.id);
     this.clientSearch.set('');
+    this.selectedPort.set('');
     const firstFreeClient = this.clients.value().find((c) => !this.clientNapIndex().has(c.id));
     this.assignForm.reset({
       clientId: firstFreeClient?.id ?? this.clients.value()[0]?.id ?? '',
@@ -428,7 +447,13 @@ export class CoverageComponent {
   }
 
   protected pickPort(portNumber: number): void {
-    this.assignForm.controls.portNumber.setValue(String(portNumber));
+    const val = String(portNumber);
+    this.selectedPort.set(val);
+    this.assignForm.controls.portNumber.setValue(val);
+  }
+
+  protected onPortSelectChange(value: string): void {
+    this.selectedPort.set(value);
   }
 
   protected confirmDelete(node: NetworkNode): void {
@@ -510,6 +535,7 @@ export class CoverageComponent {
           const nextFreeClient = this.clients
             .value()
             .find((c) => c.id !== raw.clientId && !this.clientNapIndex().has(c.id));
+          this.selectedPort.set('');
           this.assignForm.reset({
             clientId: nextFreeClient?.id ?? '',
             portNumber: '',
