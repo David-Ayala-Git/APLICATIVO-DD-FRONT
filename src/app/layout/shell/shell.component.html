@@ -8,20 +8,6 @@
   [class.mobile-open]="mobileOpen()"
   [class.is-light]="sidebarTheme() === 'light'"
 >
-  <button
-    type="button"
-    class="sidebar-edge-toggle"
-    (click)="toggleSidebar()"
-    [attr.aria-label]="collapsed() ? 'Expandir barra lateral' : 'Contraer barra lateral'"
-    [title]="collapsed() ? 'Expandir menu' : 'Contraer menu'"
-  >
-    <i
-      class="fas"
-      [class.fa-chevron-left]="!collapsed()"
-      [class.fa-chevron-right]="collapsed()"
-    ></i>
-  </button>
-
   <div class="sidebar-brand">
     <div class="brand-logo-frame">
       <img src="logo-mark.png" alt="D&D Software" class="brand-logo-mark" />

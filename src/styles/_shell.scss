@@ -7,23 +7,23 @@ app-shell {
 }
 
 .sidebar {
-  --sb-bg: #262930;
-  --sb-surface: #333741;
-  --sb-surface-hover: #3d424e;
-  --sb-active-bg: #454a57;
-  --sb-border: rgba(255, 255, 255, 0.08);
-  --sb-text: #d1d5db;
-  --sb-text-strong: #f9fafb;
-  --sb-muted: #8b93a5;
-  --sb-icon: #aeb5c4;
-  --sb-indicator: #ef4444;
-  --sb-edge-btn: #2563eb;
-  --sb-switch-bg: #323640;
-  --sb-switch-active: #474c59;
-  --sb-shadow: 4px 0 28px -12px rgba(15, 23, 42, 0.32);
+  --sb-bg: var(--sb-custom-dark-bg, var(--sidebar-bg));
+  --sb-bg-2: var(--sb-custom-dark-bg-2, var(--sidebar-bg-2));
+  --sb-surface: color-mix(in srgb, var(--sb-bg) 88%, white);
+  --sb-surface-hover: color-mix(in srgb, var(--sb-bg) 81%, white);
+  --sb-indicator: var(--sb-custom-indicator, var(--brand-1));
+  --sb-active-bg: color-mix(in srgb, var(--sb-indicator) 20%, var(--sb-bg));
+  --sb-border: color-mix(in srgb, var(--sb-bg) 85%, white);
+  --sb-text: var(--sb-custom-dark-text, #c7cde0);
+  --sb-text-strong: #f8fafc;
+  --sb-muted: #8b93a7;
+  --sb-icon: var(--sb-custom-dark-text, #9aa4c0);
+  --sb-switch-bg: color-mix(in srgb, var(--sb-bg) 90%, white);
+  --sb-switch-active: color-mix(in srgb, var(--sb-bg) 78%, white);
+  --sb-shadow: 4px 0 28px -12px rgba(2, 6, 23, 0.45);
 
   width: 256px;
-  background: var(--sb-bg);
+  background: linear-gradient(180deg, var(--sb-bg), var(--sb-bg-2));
   border-right: 1px solid var(--sb-border);
   box-shadow: var(--sb-shadow);
   display: flex;
@@ -33,7 +33,7 @@ app-shell {
   height: 100vh;
   height: 100dvh;
   z-index: 100;
-  overflow: visible;
+  overflow: hidden;
   transition:
     width 0.3s var(--ease-out),
     transform 0.3s var(--ease-out),
@@ -42,20 +42,22 @@ app-shell {
 }
 
 .sidebar.is-light {
-  --sb-bg: #ffffff;
-  --sb-surface: #f4f5f7;
-  --sb-surface-hover: #eef0f4;
-  --sb-active-bg: #f1f3f7;
-  --sb-border: #ebedf2;
-  --sb-text: #374151;
-  --sb-text-strong: #111827;
+  --sb-bg: var(--sb-custom-light-bg, #ffffff);
+  --sb-bg-2: var(--sb-custom-light-bg, #ffffff);
+  --sb-surface: color-mix(in srgb, var(--sb-bg) 94%, #0f172a);
+  --sb-surface-hover: color-mix(in srgb, var(--sb-bg) 89%, #0f172a);
+  --sb-indicator: var(--sb-custom-indicator, var(--brand-1));
+  --sb-active-bg: color-mix(in srgb, var(--sb-indicator) 10%, var(--sb-bg));
+  --sb-border: color-mix(in srgb, var(--sb-bg) 90%, #0f172a);
+  --sb-text: var(--sb-custom-light-text, #374151);
+  --sb-text-strong: color-mix(in srgb, var(--sb-text) 78%, black);
   --sb-muted: #9ca3af;
-  --sb-icon: #4b5563;
-  --sb-indicator: #dc2626;
-  --sb-edge-btn: #2563eb;
-  --sb-switch-bg: #f3f4f6;
+  --sb-icon: var(--sb-custom-light-text, #4b5563);
+  --sb-switch-bg: color-mix(in srgb, var(--sb-bg) 94%, #0f172a);
   --sb-switch-active: #ffffff;
   --sb-shadow: 4px 0 24px -14px rgba(15, 23, 42, 0.12);
+
+  background: var(--sb-bg);
 }
 
 .sidebar-backdrop {
@@ -66,39 +68,6 @@ app-shell {
   -webkit-backdrop-filter: blur(4px);
   z-index: 95;
   animation: fade 0.2s ease both;
-}
-
-/* Boton circular azul flotante en el borde derecho para contraer/expandir */
-.sidebar-edge-toggle {
-  position: absolute;
-  top: 22px;
-  right: -13px;
-  width: 26px;
-  height: 26px;
-  border-radius: 50%;
-  border: 2px solid var(--sb-bg);
-  background: var(--sb-edge-btn);
-  color: #fff;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 0.68rem;
-  cursor: pointer;
-  z-index: 12;
-  box-shadow: 0 4px 12px -2px rgba(37, 99, 235, 0.55);
-  transition:
-    transform 0.25s var(--ease-spring),
-    background var(--t-fast),
-    border-color 0.25s ease,
-    box-shadow var(--t-fast);
-}
-.sidebar-edge-toggle:hover {
-  transform: scale(1.1);
-  background: #1d4ed8;
-  box-shadow: 0 6px 16px -2px rgba(37, 99, 235, 0.65);
-}
-.sidebar-edge-toggle:active {
-  transform: scale(0.95);
 }
 
 .sidebar-close {
@@ -936,7 +905,6 @@ app-shell {
   .sidebar.collapsed.mobile-open {
     transform: translateX(0);
   }
-  .sidebar-edge-toggle,
   .sidebar-floating-tip {
     display: none;
   }

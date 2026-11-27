@@ -1,5 +1,5 @@
 import { DatePipe } from '@angular/common';
-import { Component, computed, effect, inject, signal } from '@angular/core';
+import { Component, DestroyRef, computed, effect, inject, signal } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { catchError, of } from 'rxjs';
@@ -22,6 +22,14 @@ import {
 } from '../../core/models';
 import { collection } from '../../core/state/collection';
 import { DEFAULT_BRAND_ACCENT, DEFAULT_BRAND_PRIMARY } from '../../core/state/brand-theme';
+import {
+  DEFAULT_SIDEBAR_COLORS,
+  SidebarColors,
+  applySidebarColors,
+  loadSidebarColors,
+  resetSidebarColors,
+  saveSidebarColors,
+} from '../../core/state/sidebar-theme';
 import { TenantService } from '../../core/state/tenant.service';
 import { describeHttpError } from '../../core/ui/http-error';
 import { ToastService } from '../../core/ui/toast.service';
@@ -65,6 +73,7 @@ export class SettingsComponent {
   private readonly toast = inject(ToastService);
   private readonly fb = inject(FormBuilder);
   private readonly tenantService = inject(TenantService);
+  private readonly destroyRef = inject(DestroyRef);
 
   protected readonly auth = inject(AuthService);
 
@@ -214,6 +223,47 @@ export class SettingsComponent {
           ? (this.tenants.value().find((t) => t.id === this.selectedUserTenantId()) ?? null)
           : this.tenant();
     return getRolePermissionSummary(role, targetTenant);
+  });
+
+  /** Colores del sidebar (oscuro, claro e indicador activo) con vista previa en vivo. */
+  protected readonly savedSidebarColors = signal<SidebarColors>({ ...DEFAULT_SIDEBAR_COLORS });
+  protected readonly sidebarForm = this.fb.nonNullable.group({
+    darkBg: [DEFAULT_SIDEBAR_COLORS.darkBg],
+    darkText: [DEFAULT_SIDEBAR_COLORS.darkText],
+    lightBg: [DEFAULT_SIDEBAR_COLORS.lightBg],
+    lightText: [DEFAULT_SIDEBAR_COLORS.lightText],
+    indicator: [DEFAULT_SIDEBAR_COLORS.indicator],
+  });
+
+  private readonly syncSidebarColorsForm = effect(() => {
+    const slug = this.tenant()?.slug ?? this.auth.tenantSlug();
+    const loaded = loadSidebarColors(slug);
+    this.savedSidebarColors.set(loaded);
+    this.sidebarForm.reset(loaded, { emitEvent: false });
+  });
+
+  private readonly previewSidebarColors = toSignal(this.sidebarForm.valueChanges, {
+    initialValue: this.sidebarForm.getRawValue(),
+  });
+
+  private readonly liveSidebarPreviewEffect = effect(() => {
+    const current = this.previewSidebarColors();
+    if (!this.sidebarForm.dirty) {
+      return;
+    }
+    applySidebarColors({
+      darkBg: current.darkBg ?? DEFAULT_SIDEBAR_COLORS.darkBg,
+      darkText: current.darkText ?? DEFAULT_SIDEBAR_COLORS.darkText,
+      lightBg: current.lightBg ?? DEFAULT_SIDEBAR_COLORS.lightBg,
+      lightText: current.lightText ?? DEFAULT_SIDEBAR_COLORS.lightText,
+      indicator: current.indicator ?? DEFAULT_SIDEBAR_COLORS.indicator,
+    });
+  });
+
+  private readonly revertUnsavedSidebarPreview = this.destroyRef.onDestroy(() => {
+    if (this.sidebarColorsChanged()) {
+      applySidebarColors(this.savedSidebarColors());
+    }
   });
 
   /** Colores de marca del proveedor de la sesion (los aplica TenantService a toda la consola). */
@@ -778,6 +828,34 @@ export class SettingsComponent {
       .replace(/^-+|-+$/g, '')
       .slice(0, 60);
     this.tenantForm.controls.slug.setValue(slug);
+  }
+
+  protected sidebarColorsChanged(): boolean {
+    const saved = this.savedSidebarColors();
+    const raw = this.sidebarForm.getRawValue();
+    return (
+      raw.darkBg.toLowerCase() !== saved.darkBg.toLowerCase() ||
+      raw.darkText.toLowerCase() !== saved.darkText.toLowerCase() ||
+      raw.lightBg.toLowerCase() !== saved.lightBg.toLowerCase() ||
+      raw.lightText.toLowerCase() !== saved.lightText.toLowerCase() ||
+      raw.indicator.toLowerCase() !== saved.indicator.toLowerCase()
+    );
+  }
+
+  protected saveSidebarPalette(): void {
+    const slug = this.tenant()?.slug ?? this.auth.tenantSlug();
+    const saved = saveSidebarColors(slug, this.sidebarForm.getRawValue());
+    this.savedSidebarColors.set(saved);
+    this.sidebarForm.reset(saved, { emitEvent: false });
+    this.toast.success('Colores del sidebar guardados.');
+  }
+
+  protected resetSidebarPalette(): void {
+    const slug = this.tenant()?.slug ?? this.auth.tenantSlug();
+    const defaults = resetSidebarColors(slug);
+    this.savedSidebarColors.set(defaults);
+    this.sidebarForm.reset(defaults, { emitEvent: false });
+    this.toast.info('Sidebar restablecido a los colores originales de D&D.');
   }
 
   protected brandChanged(): boolean {

@@ -6,6 +6,7 @@ import { matchesBaseRoleName } from '../auth/access';
 import { AuthService } from '../auth/auth.service';
 import { CustomRole, Tenant } from '../models';
 import { applyBrandTheme } from './brand-theme';
+import { applySidebarColors, loadSidebarColors } from './sidebar-theme';
 
 /**
  * Tenant de la sesion (el que indica el claim del JWT), compartido por toda la
@@ -30,9 +31,12 @@ export class TenantService {
   readonly loading = this.loadingSignal.asReadonly();
 
   /** Colores del proveedor en toda la consola; al cerrar sesion vuelve el tema base. */
-  private readonly brandEffect = effect(() =>
-    applyBrandTheme(this.auth.isAuthenticated() ? this.tenantSignal() : null),
-  );
+  private readonly brandEffect = effect(() => {
+    const authed = this.auth.isAuthenticated();
+    const tenant = authed ? this.tenantSignal() : null;
+    applyBrandTheme(tenant);
+    applySidebarColors(authed ? loadSidebarColors(tenant?.slug ?? this.auth.tenantSlug()) : null);
+  });
 
   /** Tras guardar en Configuracion: refleja el tenant devuelto sin volver a pedirlo. */
   replaceTenant(tenant: Tenant): void {

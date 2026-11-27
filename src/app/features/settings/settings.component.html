@@ -107,8 +107,106 @@
         </div>
       }
 
+      <div class="card" [style.margin-top]="tenant() ? '1rem' : null">
+        <div class="card-header">
+          <div>
+            <h3>Colores del menu lateral (Sidebar)</h3>
+            <div class="sub">
+              Personaliza el fondo, texto e indicador activo en modo oscuro y claro con vista previa en vivo
+            </div>
+          </div>
+          <span class="badge badge-violet">Vista previa en vivo</span>
+        </div>
+        <div class="card-body">
+          <form [formGroup]="sidebarForm" (ngSubmit)="saveSidebarPalette()">
+            <div class="form-row">
+              <div class="form-group">
+                <label for="sb-dark-bg">Fondo modo oscuro</label>
+                <div class="row" style="gap: 0.5rem">
+                  <input
+                    id="sb-dark-bg"
+                    type="color"
+                    formControlName="darkBg"
+                    style="width: 44px; height: 38px; padding: 2px; cursor: pointer"
+                  />
+                  <input class="form-control mono" [value]="sidebarForm.controls.darkBg.value" disabled />
+                </div>
+              </div>
+              <div class="form-group">
+                <label for="sb-dark-text">Texto e iconos (oscuro)</label>
+                <div class="row" style="gap: 0.5rem">
+                  <input
+                    id="sb-dark-text"
+                    type="color"
+                    formControlName="darkText"
+                    style="width: 44px; height: 38px; padding: 2px; cursor: pointer"
+                  />
+                  <input class="form-control mono" [value]="sidebarForm.controls.darkText.value" disabled />
+                </div>
+              </div>
+            </div>
+
+            <div class="form-row">
+              <div class="form-group">
+                <label for="sb-light-bg">Fondo modo claro</label>
+                <div class="row" style="gap: 0.5rem">
+                  <input
+                    id="sb-light-bg"
+                    type="color"
+                    formControlName="lightBg"
+                    style="width: 44px; height: 38px; padding: 2px; cursor: pointer"
+                  />
+                  <input class="form-control mono" [value]="sidebarForm.controls.lightBg.value" disabled />
+                </div>
+              </div>
+              <div class="form-group">
+                <label for="sb-light-text">Texto e iconos (claro)</label>
+                <div class="row" style="gap: 0.5rem">
+                  <input
+                    id="sb-light-text"
+                    type="color"
+                    formControlName="lightText"
+                    style="width: 44px; height: 38px; padding: 2px; cursor: pointer"
+                  />
+                  <input class="form-control mono" [value]="sidebarForm.controls.lightText.value" disabled />
+                </div>
+              </div>
+            </div>
+
+            <div class="form-row">
+              <div class="form-group">
+                <label for="sb-indicator">Color del indicador activo</label>
+                <div class="row" style="gap: 0.5rem">
+                  <input
+                    id="sb-indicator"
+                    type="color"
+                    formControlName="indicator"
+                    style="width: 44px; height: 38px; padding: 2px; cursor: pointer"
+                  />
+                  <input class="form-control mono" [value]="sidebarForm.controls.indicator.value" disabled />
+                </div>
+              </div>
+            </div>
+
+            <div class="row-wrap" style="gap: 0.5rem">
+              <button
+                appRipple
+                type="submit"
+                class="btn btn-grad btn-sm"
+                [disabled]="!sidebarColorsChanged()"
+              >
+                <i class="fas fa-swatchbook"></i> Guardar colores del sidebar
+              </button>
+              <button type="button" class="btn btn-outline btn-sm" (click)="resetSidebarPalette()">
+                <i class="fas fa-rotate-left"></i> Restablecer originales
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+
       @if (isSuperAdmin()) {
-        <div class="card" [style.margin-top]="tenant() ? '1rem' : null">
+        <div class="card" style="margin-top: 1rem">
           <div class="card-header">
             <div>
               <h3>Proveedores en la plataforma</h3>
