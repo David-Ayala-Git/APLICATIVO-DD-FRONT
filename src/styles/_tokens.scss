@@ -21,7 +21,7 @@
   --purple-light: #ede9fe;
 
   --surface: #ffffff;
-  --surface-2: #f6f7fb;
+  --surface-2: var(--page-custom-light-bg, #f6f7fb);
   --surface-3: #eef0f6;
   --border: #e6e8ef;
   --border-dark: #d4d7e0;
@@ -57,7 +57,7 @@
   color-scheme: dark;
 
   --surface: #111827;
-  --surface-2: #090e1a;
+  --surface-2: var(--page-custom-dark-bg, #090e1a);
   --surface-3: #1b2436;
   --border: #1f2b42;
   --border-dark: #314262;

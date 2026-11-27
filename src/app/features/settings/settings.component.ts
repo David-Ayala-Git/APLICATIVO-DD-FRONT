@@ -225,7 +225,7 @@ export class SettingsComponent {
     return getRolePermissionSummary(role, targetTenant);
   });
 
-  /** Colores del sidebar (oscuro, claro e indicador activo) con vista previa en vivo. */
+  /** Colores del sidebar y fondo de pagina (oscuro, claro e indicador activo) con vista previa en vivo. */
   protected readonly savedSidebarColors = signal<SidebarColors>({ ...DEFAULT_SIDEBAR_COLORS });
   protected readonly sidebarForm = this.fb.nonNullable.group({
     darkBg: [DEFAULT_SIDEBAR_COLORS.darkBg],
@@ -233,6 +233,8 @@ export class SettingsComponent {
     lightBg: [DEFAULT_SIDEBAR_COLORS.lightBg],
     lightText: [DEFAULT_SIDEBAR_COLORS.lightText],
     indicator: [DEFAULT_SIDEBAR_COLORS.indicator],
+    pageDarkBg: [DEFAULT_SIDEBAR_COLORS.pageDarkBg],
+    pageLightBg: [DEFAULT_SIDEBAR_COLORS.pageLightBg],
   });
 
   private readonly syncSidebarColorsForm = effect(() => {
@@ -257,6 +259,8 @@ export class SettingsComponent {
       lightBg: current.lightBg ?? DEFAULT_SIDEBAR_COLORS.lightBg,
       lightText: current.lightText ?? DEFAULT_SIDEBAR_COLORS.lightText,
       indicator: current.indicator ?? DEFAULT_SIDEBAR_COLORS.indicator,
+      pageDarkBg: current.pageDarkBg ?? DEFAULT_SIDEBAR_COLORS.pageDarkBg,
+      pageLightBg: current.pageLightBg ?? DEFAULT_SIDEBAR_COLORS.pageLightBg,
     });
   });
 
@@ -838,7 +842,9 @@ export class SettingsComponent {
       raw.darkText.toLowerCase() !== saved.darkText.toLowerCase() ||
       raw.lightBg.toLowerCase() !== saved.lightBg.toLowerCase() ||
       raw.lightText.toLowerCase() !== saved.lightText.toLowerCase() ||
-      raw.indicator.toLowerCase() !== saved.indicator.toLowerCase()
+      raw.indicator.toLowerCase() !== saved.indicator.toLowerCase() ||
+      raw.pageDarkBg.toLowerCase() !== saved.pageDarkBg.toLowerCase() ||
+      raw.pageLightBg.toLowerCase() !== saved.pageLightBg.toLowerCase()
     );
   }
 
@@ -847,7 +853,7 @@ export class SettingsComponent {
     const saved = saveSidebarColors(slug, this.sidebarForm.getRawValue());
     this.savedSidebarColors.set(saved);
     this.sidebarForm.reset(saved, { emitEvent: false });
-    this.toast.success('Colores del sidebar guardados.');
+    this.toast.success('Colores de apariencia guardados.');
   }
 
   protected resetSidebarPalette(): void {
@@ -855,7 +861,7 @@ export class SettingsComponent {
     const defaults = resetSidebarColors(slug);
     this.savedSidebarColors.set(defaults);
     this.sidebarForm.reset(defaults, { emitEvent: false });
-    this.toast.info('Sidebar restablecido a los colores originales de D&D.');
+    this.toast.info('Apariencia restablecida a los colores originales de D&D.');
   }
 
   protected brandChanged(): boolean {

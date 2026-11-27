@@ -28,15 +28,19 @@ export interface SidebarColors {
   lightBg: string;
   lightText: string;
   indicator: string;
+  pageDarkBg: string;
+  pageLightBg: string;
 }
 
-/** Colores originales del sidebar D&D (azul marino profundo en oscuro y blanco limpio en claro). */
+/** Colores originales del sidebar y fondo de pagina D&D. */
 export const DEFAULT_SIDEBAR_COLORS: SidebarColors = {
   darkBg: '#0b1020',
   darkText: '#c7cde0',
   lightBg: '#ffffff',
   lightText: '#374151',
   indicator: '#7c3aed',
+  pageDarkBg: '#090e1a',
+  pageLightBg: '#f6f7fb',
 };
 
 const HEX = /^#[0-9a-f]{6}$/i;
@@ -49,6 +53,8 @@ const SIDEBAR_COLOR_VARS = [
   '--sb-custom-light-bg',
   '--sb-custom-light-text',
   '--sb-custom-indicator',
+  '--page-custom-dark-bg',
+  '--page-custom-light-bg',
 ] as const;
 
 function storageKey(tenantSlug: string | null | undefined): string {
@@ -72,6 +78,8 @@ export function loadSidebarColors(tenantSlug: string | null | undefined): Sideba
       lightBg: validHex(parsed.lightBg, DEFAULT_SIDEBAR_COLORS.lightBg),
       lightText: validHex(parsed.lightText, DEFAULT_SIDEBAR_COLORS.lightText),
       indicator: validHex(parsed.indicator, DEFAULT_SIDEBAR_COLORS.indicator),
+      pageDarkBg: validHex(parsed.pageDarkBg, DEFAULT_SIDEBAR_COLORS.pageDarkBg),
+      pageLightBg: validHex(parsed.pageLightBg, DEFAULT_SIDEBAR_COLORS.pageLightBg),
     };
   } catch {
     return { ...DEFAULT_SIDEBAR_COLORS };
@@ -88,6 +96,8 @@ export function saveSidebarColors(
     lightBg: validHex(colors.lightBg, DEFAULT_SIDEBAR_COLORS.lightBg),
     lightText: validHex(colors.lightText, DEFAULT_SIDEBAR_COLORS.lightText),
     indicator: validHex(colors.indicator, DEFAULT_SIDEBAR_COLORS.indicator),
+    pageDarkBg: validHex(colors.pageDarkBg, DEFAULT_SIDEBAR_COLORS.pageDarkBg),
+    pageLightBg: validHex(colors.pageLightBg, DEFAULT_SIDEBAR_COLORS.pageLightBg),
   };
   try {
     localStorage.setItem(storageKey(tenantSlug), JSON.stringify(clean));
@@ -121,6 +131,8 @@ export function applySidebarColors(colors: SidebarColors | null): void {
   const lightBg = validHex(colors.lightBg, DEFAULT_SIDEBAR_COLORS.lightBg);
   const lightText = validHex(colors.lightText, DEFAULT_SIDEBAR_COLORS.lightText);
   const indicator = validHex(colors.indicator, DEFAULT_SIDEBAR_COLORS.indicator);
+  const pageDarkBg = validHex(colors.pageDarkBg, DEFAULT_SIDEBAR_COLORS.pageDarkBg);
+  const pageLightBg = validHex(colors.pageLightBg, DEFAULT_SIDEBAR_COLORS.pageLightBg);
 
   if (darkBg !== DEFAULT_SIDEBAR_COLORS.darkBg) {
     style.setProperty('--sb-custom-dark-bg', darkBg);
@@ -137,5 +149,11 @@ export function applySidebarColors(colors: SidebarColors | null): void {
   }
   if (indicator !== DEFAULT_SIDEBAR_COLORS.indicator) {
     style.setProperty('--sb-custom-indicator', indicator);
+  }
+  if (pageDarkBg !== DEFAULT_SIDEBAR_COLORS.pageDarkBg) {
+    style.setProperty('--page-custom-dark-bg', pageDarkBg);
+  }
+  if (pageLightBg !== DEFAULT_SIDEBAR_COLORS.pageLightBg) {
+    style.setProperty('--page-custom-light-bg', pageLightBg);
   }
 }
