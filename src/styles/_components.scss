@@ -1408,6 +1408,15 @@ tr:hover .avatar-sm,
 }
 
 /* Mapa Leaflet */
+.coverage-map-card {
+  align-self: start;
+}
+.coverage-map-card.is-map-collapsed .card-header {
+  border-bottom: none;
+}
+.coverage-map-body.is-collapsed {
+  display: none;
+}
 .coverage-map-toolbar {
   display: flex;
   align-items: center;

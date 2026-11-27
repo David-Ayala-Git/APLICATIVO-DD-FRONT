@@ -253,6 +253,7 @@ export class CoverageComponent {
 
   protected readonly mapStyles = MAP_STYLES;
   protected readonly mapStyle = signal<MapStyleId>('satellite');
+  protected readonly mapCollapsed = signal(false);
 
   protected readonly nodes = collection(() => this.api.nodes(), [] as NetworkNode[]);
   protected readonly fiberLinks = collection(
@@ -645,9 +646,43 @@ export class CoverageComponent {
     return this.clientNapIndex().has(clientId);
   }
 
+  protected toggleMapCollapsed(): void {
+    const next = !this.mapCollapsed();
+    this.mapCollapsed.set(next);
+    if (!next) {
+      this.refreshMapSize();
+    }
+  }
+
+  private ensureMapExpanded(): boolean {
+    if (!this.mapCollapsed()) {
+      return false;
+    }
+    this.mapCollapsed.set(false);
+    this.refreshMapSize();
+    return true;
+  }
+
+  private refreshMapSize(): void {
+    requestAnimationFrame(() => {
+      this.map?.invalidateSize();
+      setTimeout(() => this.map?.invalidateSize(), 180);
+    });
+  }
+
   protected focusNode(node: NetworkNode): void {
-    if (this.map) {
-      this.map.setView([node.latitude, node.longitude], 17);
+    const wasCollapsed = this.ensureMapExpanded();
+    const run = () => {
+      if (this.map) {
+        this.map.invalidateSize();
+        this.map.setView([node.latitude, node.longitude], 17);
+      }
+      this.mapHost()?.nativeElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    };
+    if (wasCollapsed) {
+      setTimeout(run, 60);
+    } else {
+      run();
     }
   }
 
@@ -656,10 +691,21 @@ export class CoverageComponent {
     if (!this.map || coords.length === 0) {
       return;
     }
-    this.map.fitBounds(coords, { padding: [50, 50], maxZoom: 17 });
+    const wasCollapsed = this.ensureMapExpanded();
+    const run = () => {
+      this.map?.invalidateSize();
+      this.map?.fitBounds(coords, { padding: [50, 50], maxZoom: 17 });
+      this.mapHost()?.nativeElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    };
+    if (wasCollapsed) {
+      setTimeout(run, 60);
+    } else {
+      run();
+    }
   }
 
   protected recenterMap(): void {
+    this.ensureMapExpanded();
     if (!this.map) {
       return;
     }
@@ -750,6 +796,7 @@ export class CoverageComponent {
   // ---------- Reubicacion manual de nodos en el mapa ----------
 
   protected startRelocateNode(node: NetworkNode): void {
+    const wasCollapsed = this.ensureMapExpanded();
     // Cancela trazado de fibra si estaba activo para evitar conflictos de clics en el mapa
     this.tracingFiber.set(false);
     this.editingLink.set(null);
@@ -759,10 +806,18 @@ export class CoverageComponent {
     this.relocatingNodeId.set(node.id);
     this.relocateCoords.set({ lat: node.latitude, lon: node.longitude });
 
-    if (this.map) {
-      this.map.setView([node.latitude, node.longitude], 17);
+    const focus = () => {
+      if (this.map) {
+        this.map.invalidateSize();
+        this.map.setView([node.latitude, node.longitude], 17);
+      }
+      this.mapHost()?.nativeElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    };
+    if (wasCollapsed) {
+      setTimeout(focus, 60);
+    } else {
+      focus();
     }
-    this.mapHost()?.nativeElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
   }
 
   protected resetRelocateNode(): void {
@@ -860,6 +915,7 @@ export class CoverageComponent {
    * para un trazado de fibra ya existente (arrastrar vertices, agregar curvas en '+' y guardar).
    */
   protected startAdjustExistingLink(link: FiberLink): void {
+    const wasCollapsed = this.ensureMapExpanded();
     this.cancelRelocateNode();
     this.editingLink.set(link);
     this.draftFromNodeId.set(link.fromNodeId);
@@ -877,13 +933,22 @@ export class CoverageComponent {
     this.tracingFiber.set(true);
 
     const coords = this.linkCoords(link);
-    if (this.map && coords.length >= 2) {
-      this.map.fitBounds(coords, { padding: [55, 55], maxZoom: 18 });
+    const focus = () => {
+      if (this.map && coords.length >= 2) {
+        this.map.invalidateSize();
+        this.map.fitBounds(coords, { padding: [55, 55], maxZoom: 18 });
+      }
+      this.mapHost()?.nativeElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    };
+    if (wasCollapsed) {
+      setTimeout(focus, 60);
+    } else {
+      focus();
     }
-    this.mapHost()?.nativeElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
   }
 
   protected startTraceOnMap(): void {
+    const wasCollapsed = this.ensureMapExpanded();
     this.cancelRelocateNode();
     const raw = this.linkForm.getRawValue();
     if (!raw.fromNodeId || !raw.toNodeId || raw.fromNodeId === raw.toNodeId) {
@@ -897,8 +962,17 @@ export class CoverageComponent {
     this.tracingFiber.set(true);
 
     const coords = this.draftPolylineCoords();
-    if (this.map && coords.length >= 2) {
-      this.map.fitBounds(coords, { padding: [55, 55], maxZoom: 18 });
+    const focus = () => {
+      if (this.map && coords.length >= 2) {
+        this.map.invalidateSize();
+        this.map.fitBounds(coords, { padding: [55, 55], maxZoom: 18 });
+      }
+      this.mapHost()?.nativeElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    };
+    if (wasCollapsed) {
+      setTimeout(focus, 60);
+    } else {
+      focus();
     }
   }
 
