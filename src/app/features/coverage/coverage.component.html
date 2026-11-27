@@ -139,9 +139,9 @@
           (retry)="reloadAll()"
         />
       } @else if (leafletReady()) {
-        <div class="coverage-map-toolbar coverage-map-toolbar-styles" role="group" aria-label="Tipo de relieve del mapa">
+        <div class="coverage-map-toolbar coverage-map-toolbar-styles" role="group" aria-label="Tipo de vista del mapa">
           <span class="coverage-map-toolbar-label">
-            <i class="fas fa-layer-group"></i> Relieve:
+            <i class="fas fa-layer-group"></i> Vista:
           </span>
           @for (style of mapStyles; track style.id) {
             <button

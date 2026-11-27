@@ -113,7 +113,7 @@ interface LeafletStatic {
   DomEvent?: { stopPropagation(e: unknown): void; preventDefault(e: unknown): void };
 }
 
-type MapStyleId = 'satellite' | 'relief' | 'topo' | 'streets' | 'dark';
+type MapStyleId = 'satellite' | 'streets';
 
 interface MapTileSpec {
   url: string;
@@ -152,38 +152,6 @@ const MAP_STYLES: MapStyleOption[] = [
     ],
   },
   {
-    id: 'relief',
-    label: 'Relieve 3D',
-    icon: 'fas fa-mountain-sun',
-    layers: [
-      {
-        url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Shaded_Relief/MapServer/tile/{z}/{y}/{x}',
-        maxZoom: 19,
-        maxNativeZoom: 13,
-        attribution: 'Tiles &copy; Esri &mdash; World Shaded Relief',
-      },
-      {
-        url: 'https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}',
-        maxZoom: 19,
-        attribution: '&copy; Esri',
-        opacity: 0.92,
-      },
-    ],
-  },
-  {
-    id: 'topo',
-    label: 'Topografico',
-    icon: 'fas fa-mountain',
-    layers: [
-      {
-        url: 'https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png',
-        maxZoom: 19,
-        maxNativeZoom: 17,
-        attribution: '&copy; OpenStreetMap, SRTM | &copy; OpenTopoMap (CC-BY-SA)',
-      },
-    ],
-  },
-  {
     id: 'streets',
     label: 'Calles',
     icon: 'fas fa-road',
@@ -192,18 +160,6 @@ const MAP_STYLES: MapStyleOption[] = [
         url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
         maxZoom: 19,
         attribution: '&copy; OpenStreetMap contributors',
-      },
-    ],
-  },
-  {
-    id: 'dark',
-    label: 'Oscuro',
-    icon: 'fas fa-moon',
-    layers: [
-      {
-        url: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
-        maxZoom: 19,
-        attribution: '&copy; OpenStreetMap contributors &copy; CARTO',
       },
     ],
   },

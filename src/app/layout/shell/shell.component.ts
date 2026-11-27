@@ -1,12 +1,14 @@
 import {
   Component,
   DestroyRef,
+  ElementRef,
   HostListener,
   OnInit,
   computed,
   effect,
   inject,
   signal,
+  viewChild,
 } from '@angular/core';
 import { NavigationEnd, Router, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
 import { filter } from 'rxjs';
@@ -17,8 +19,11 @@ import { PlatformPulseService } from '../../core/state/platform-pulse.service';
 import { TenantService } from '../../core/state/tenant.service';
 import { ToastService } from '../../core/ui/toast.service';
 import { RippleDirective } from '../../shared/directives/ripple.directive';
+import { normalize } from '../../shared/format';
 import { tenantPlanLabel } from '../../shared/labels';
 import { NAV, NavCounter } from './nav';
+
+const SIDEBAR_THEME_KEY = 'dd_sidebar_theme';
 
 /**
  * Armazon de la consola: barra lateral, topbar y el outlet donde entra cada
@@ -55,6 +60,27 @@ export class ShellComponent implements OnInit {
         ...section,
         items: section.items.filter(
           (i) => canAccessPage(i.path, role, tenant) && (!allowed || allowed.has(i.path)),
+        ),
+      }))
+      .filter((section) => section.items.length > 0);
+  });
+
+  protected readonly navSearch = signal('');
+  protected readonly sidebarTheme = signal<'dark' | 'light'>(this.readSavedSidebarTheme());
+  protected readonly hoveredTip = signal<{ label: string; top: number } | null>(null);
+  private readonly sidebarSearchInput = viewChild<ElementRef<HTMLInputElement>>('sidebarSearchInput');
+
+  protected readonly filteredNav = computed(() => {
+    const term = normalize(this.navSearch());
+    const sections = this.visibleNav();
+    if (!term) {
+      return sections;
+    }
+    return sections
+      .map((section) => ({
+        ...section,
+        items: section.items.filter(
+          (i) => normalize(i.label).includes(term) || normalize(section.label).includes(term),
         ),
       }))
       .filter((section) => section.items.length > 0);
@@ -125,10 +151,58 @@ export class ShellComponent implements OnInit {
   }
 
   protected toggleSidebar(): void {
+    this.hoveredTip.set(null);
     if (window.innerWidth <= this.mobileBreakpoint) {
       this.mobileOpen.update((v) => !v);
     } else {
       this.collapsed.update((v) => !v);
+    }
+  }
+
+  protected setSidebarTheme(theme: 'dark' | 'light'): void {
+    this.sidebarTheme.set(theme);
+    try {
+      localStorage.setItem(SIDEBAR_THEME_KEY, theme);
+    } catch {
+      // Modo privado / almacenamiento no disponible
+    }
+  }
+
+  protected toggleSidebarTheme(): void {
+    this.setSidebarTheme(this.sidebarTheme() === 'dark' ? 'light' : 'dark');
+  }
+
+  protected focusSidebarSearch(): void {
+    if (this.collapsed() && window.innerWidth > this.mobileBreakpoint) {
+      this.collapsed.set(false);
+      this.hoveredTip.set(null);
+      setTimeout(() => this.sidebarSearchInput()?.nativeElement.focus(), 220);
+      return;
+    }
+    this.sidebarSearchInput()?.nativeElement.focus();
+  }
+
+  protected showNavTip(label: string, event: Event): void {
+    if (!this.collapsed() || window.innerWidth <= this.mobileBreakpoint) {
+      return;
+    }
+    const target = event.currentTarget as HTMLElement | null;
+    if (!target) {
+      return;
+    }
+    const rect = target.getBoundingClientRect();
+    this.hoveredTip.set({ label, top: rect.top + rect.height / 2 });
+  }
+
+  protected hideNavTip(): void {
+    this.hoveredTip.set(null);
+  }
+
+  private readSavedSidebarTheme(): 'dark' | 'light' {
+    try {
+      return localStorage.getItem(SIDEBAR_THEME_KEY) === 'light' ? 'light' : 'dark';
+    } catch {
+      return 'dark';
     }
   }
 
