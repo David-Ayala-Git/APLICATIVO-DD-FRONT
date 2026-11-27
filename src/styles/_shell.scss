@@ -20,18 +20,21 @@ app-shell {
   --sb-icon: var(--sb-custom-dark-text, #9aa4c0);
   --sb-switch-bg: color-mix(in srgb, var(--sb-bg) 90%, white);
   --sb-switch-active: color-mix(in srgb, var(--sb-bg) 78%, white);
-  --sb-shadow: 4px 0 28px -12px rgba(2, 6, 23, 0.45);
+  --sb-shadow: 0 18px 40px -16px rgba(2, 6, 23, 0.45);
 
-  width: 256px;
+  width: 252px;
   background: linear-gradient(180deg, var(--sb-bg), var(--sb-bg-2));
-  border-right: 1px solid var(--sb-border);
+  border: 1px solid var(--sb-border);
+  border-radius: 18px;
   box-shadow: var(--sb-shadow);
   display: flex;
   flex-direction: column;
   position: fixed;
-  inset: 0 auto 0 0;
-  height: 100vh;
-  height: 100dvh;
+  top: 10px;
+  bottom: 10px;
+  left: 10px;
+  height: calc(100vh - 20px);
+  height: calc(100dvh - 20px);
   z-index: 100;
   overflow: hidden;
   transition:
@@ -55,7 +58,7 @@ app-shell {
   --sb-icon: var(--sb-custom-light-text, #4b5563);
   --sb-switch-bg: color-mix(in srgb, var(--sb-bg) 94%, #0f172a);
   --sb-switch-active: #ffffff;
-  --sb-shadow: 4px 0 24px -14px rgba(15, 23, 42, 0.12);
+  --sb-shadow: 0 14px 36px -14px rgba(15, 23, 42, 0.14);
 
   background: var(--sb-bg);
 }
@@ -586,7 +589,7 @@ app-shell {
 /* Tooltip flotante al pasar el cursor en sidebar colapsado */
 .sidebar-floating-tip {
   position: fixed;
-  left: 82px;
+  left: 92px;
   transform: translateY(-50%);
   z-index: 145;
   padding: 0.36rem 0.7rem;
@@ -613,7 +616,7 @@ app-shell {
 
 /* ============ CONTENIDO PRINCIPAL ============ */
 .main-content {
-  margin-left: 256px;
+  margin-left: 272px;
   flex: 1;
   display: flex;
   flex-direction: column;
@@ -624,7 +627,7 @@ app-shell {
   transition: margin-left 0.3s var(--ease-out);
 }
 .main-content.expanded {
-  margin-left: 72px;
+  margin-left: 92px;
 }
 
 .topbar {
@@ -896,8 +899,14 @@ app-shell {
 @media (max-width: 1024px) {
   .sidebar,
   .sidebar.collapsed {
-    width: min(276px, 86vw);
-    transform: translateX(-100%);
+    top: 8px;
+    bottom: 8px;
+    left: 8px;
+    height: calc(100vh - 16px);
+    height: calc(100dvh - 16px);
+    width: min(276px, calc(100vw - 16px));
+    border-radius: 18px;
+    transform: translateX(calc(-100% - 20px));
     overflow: hidden;
     box-shadow: 0 24px 60px -12px rgba(2, 6, 23, 0.45);
   }
