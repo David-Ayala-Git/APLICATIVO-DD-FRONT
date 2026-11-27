@@ -39,13 +39,13 @@ export function applyBrandTheme(tenant: Tenant | null): void {
 
   style.setProperty('--primary', primary);
   style.setProperty('--primary-dark', `color-mix(in srgb, ${primary} 82%, black)`);
-  style.setProperty('--primary-light', `color-mix(in srgb, ${primary} 9%, white)`);
-  style.setProperty('--purple-light', `color-mix(in srgb, ${primary} 14%, white)`);
+  style.setProperty('--primary-light', `color-mix(in srgb, ${primary} 12%, var(--surface))`);
+  style.setProperty('--purple-light', `color-mix(in srgb, ${primary} 16%, var(--surface))`);
   style.setProperty('--brand-1', `color-mix(in srgb, ${primary} 88%, white)`);
   style.setProperty('--brand-2', accent);
   style.setProperty('--accent', accent);
-  style.setProperty('--accent-dark', `color-mix(in srgb, ${accent} 70%, black)`);
-  style.setProperty('--accent-light', `color-mix(in srgb, ${accent} 8%, white)`);
+  style.setProperty('--accent-dark', `color-mix(in srgb, ${accent} 78%, var(--text-primary))`);
+  style.setProperty('--accent-light', `color-mix(in srgb, ${accent} 12%, var(--surface))`);
   style.setProperty(
     '--grad-soft',
     `linear-gradient(135deg, color-mix(in srgb, ${primary} 10%, transparent), color-mix(in srgb, ${accent} 10%, transparent))`,

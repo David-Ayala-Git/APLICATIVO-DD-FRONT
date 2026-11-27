@@ -16,14 +16,13 @@ import { filter } from 'rxjs';
 import { canAccessPage } from '../../core/auth/access';
 import { AuthService } from '../../core/auth/auth.service';
 import { PlatformPulseService } from '../../core/state/platform-pulse.service';
+import { AppThemeMode, applyAppTheme, loadAppTheme } from '../../core/state/sidebar-theme';
 import { TenantService } from '../../core/state/tenant.service';
 import { ToastService } from '../../core/ui/toast.service';
 import { RippleDirective } from '../../shared/directives/ripple.directive';
 import { normalize } from '../../shared/format';
 import { tenantPlanLabel } from '../../shared/labels';
 import { NAV, NavCounter } from './nav';
-
-const SIDEBAR_THEME_KEY = 'dd_sidebar_theme';
 
 /**
  * Armazon de la consola: barra lateral, topbar y el outlet donde entra cada
@@ -66,7 +65,7 @@ export class ShellComponent implements OnInit {
   });
 
   protected readonly navSearch = signal('');
-  protected readonly sidebarTheme = signal<'dark' | 'light'>(this.readSavedSidebarTheme());
+  protected readonly sidebarTheme = signal<AppThemeMode>(loadAppTheme());
   protected readonly hoveredTip = signal<{ label: string; top: number } | null>(null);
   private readonly sidebarSearchInput = viewChild<ElementRef<HTMLInputElement>>('sidebarSearchInput');
 
@@ -159,13 +158,9 @@ export class ShellComponent implements OnInit {
     }
   }
 
-  protected setSidebarTheme(theme: 'dark' | 'light'): void {
+  protected setSidebarTheme(theme: AppThemeMode): void {
     this.sidebarTheme.set(theme);
-    try {
-      localStorage.setItem(SIDEBAR_THEME_KEY, theme);
-    } catch {
-      // Modo privado / almacenamiento no disponible
-    }
+    applyAppTheme(theme);
   }
 
   protected toggleSidebarTheme(): void {
@@ -196,14 +191,6 @@ export class ShellComponent implements OnInit {
 
   protected hideNavTip(): void {
     this.hoveredTip.set(null);
-  }
-
-  private readSavedSidebarTheme(): 'dark' | 'light' {
-    try {
-      return localStorage.getItem(SIDEBAR_THEME_KEY) === 'light' ? 'light' : 'dark';
-    } catch {
-      return 'dark';
-    }
   }
 
   protected closeMobileSidebar(): void {

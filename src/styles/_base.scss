@@ -21,6 +21,21 @@ body {
   min-height: 100dvh;
   overflow-x: clip;
   -webkit-font-smoothing: antialiased;
+  transition: background-color 0.25s ease, color 0.25s ease;
+}
+
+:root[data-theme='dark'] body {
+  background:
+    radial-gradient(920px 500px at 100% -5%, rgba(124, 58, 237, 0.16), transparent 60%),
+    radial-gradient(780px 440px at -10% 105%, rgba(6, 182, 212, 0.13), transparent 55%),
+    var(--surface-2);
+}
+
+:root[data-theme='dark'] ::-webkit-scrollbar-thumb {
+  background: #28354f;
+}
+:root[data-theme='dark'] ::-webkit-scrollbar-thumb:hover {
+  background: #3a4c70;
 }
 
 body.sidebar-open,

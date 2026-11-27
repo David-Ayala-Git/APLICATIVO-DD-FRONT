@@ -35,7 +35,7 @@
 .wa-thread {
   display: flex;
   flex-direction: column;
-  background: #f0f2f5;
+  background: var(--surface-2);
   min-width: 0;
 }
 .wa-thread-head {
@@ -44,7 +44,7 @@
   display: flex;
   align-items: center;
   gap: 0.7rem;
-  background: #fff;
+  background: var(--surface);
   flex-wrap: wrap;
 }
 .wa-thread-head > .flex-1 {
@@ -71,17 +71,24 @@
   word-break: break-word;
 }
 .bubble.in {
-  background: #fff;
+  background: var(--surface);
+  color: var(--text-primary);
   align-self: flex-start;
   border-top-left-radius: 4px;
 }
 .bubble.out {
   background: #d9fdd3;
+  color: #0f172a;
   align-self: flex-end;
   border-top-right-radius: 4px;
 }
+:root[data-theme='dark'] .bubble.out {
+  background: rgba(16, 185, 129, 0.24);
+  color: #ecfdf5;
+}
 .bubble.bot {
   background: var(--purple-light);
+  color: var(--text-primary);
   align-self: flex-end;
   border-top-right-radius: 4px;
 }
@@ -99,7 +106,7 @@
   border-top: 1px solid var(--border);
   display: flex;
   gap: 0.6rem;
-  background: #fff;
+  background: var(--surface);
   align-items: flex-start;
 }
 
@@ -135,7 +142,8 @@
   border-top-right-radius: 4px;
 }
 .ai-bubble.agent {
-  background: #fff;
+  background: var(--surface);
+  color: var(--text-primary);
   align-self: flex-start;
   border-top-left-radius: 4px;
 }

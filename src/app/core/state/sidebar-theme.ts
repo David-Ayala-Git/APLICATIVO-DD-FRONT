@@ -1,3 +1,27 @@
+export type AppThemeMode = 'light' | 'dark';
+
+const APP_THEME_KEY = 'dd_app_theme';
+const LEGACY_SIDEBAR_THEME_KEY = 'dd_sidebar_theme';
+
+export function loadAppTheme(): AppThemeMode {
+  try {
+    const saved = localStorage.getItem(APP_THEME_KEY) ?? localStorage.getItem(LEGACY_SIDEBAR_THEME_KEY);
+    return saved === 'dark' ? 'dark' : 'light';
+  } catch {
+    return 'light';
+  }
+}
+
+export function applyAppTheme(mode: AppThemeMode): void {
+  document.documentElement.setAttribute('data-theme', mode);
+  try {
+    localStorage.setItem(APP_THEME_KEY, mode);
+    localStorage.setItem(LEGACY_SIDEBAR_THEME_KEY, mode);
+  } catch {
+    // Almacenamiento local no disponible
+  }
+}
+
 export interface SidebarColors {
   darkBg: string;
   darkText: string;

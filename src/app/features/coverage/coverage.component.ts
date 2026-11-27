@@ -396,17 +396,36 @@ export class CoverageComponent {
   protected readonly napSummary = computed(() => {
     const naps = this.nodes.value().filter((n) => n.type === 'NAP');
     const totalPorts = naps.reduce((s, n) => s + (n.napCapacity ?? 8), 0);
-    const usedPorts = naps.reduce((s, n) => s + (n.usedPorts ?? 0), 0);
+    const usedPorts = naps.reduce((s, n) => s + (n.usedPorts ?? n.assignments?.length ?? 0), 0);
+    let available = 0;
+    let low = 0;
+    let full = 0;
+    for (const n of naps) {
+      const cap = n.napCapacity ?? 8;
+      const used = n.usedPorts ?? n.assignments?.length ?? 0;
+      const status: NapOccupancyStatus =
+        n.napStatus ?? (used >= cap ? 'FULL' : cap > 0 && used / cap >= 0.75 ? 'LOW' : 'AVAILABLE');
+      if (status === 'FULL') {
+        full++;
+      } else if (status === 'LOW') {
+        low++;
+      } else {
+        available++;
+      }
+    }
     return {
       total: naps.length,
-      available: naps.filter((n) => n.napStatus === 'AVAILABLE').length,
-      low: naps.filter((n) => n.napStatus === 'LOW').length,
-      full: naps.filter((n) => n.napStatus === 'FULL').length,
+      available,
+      low,
+      full,
       totalPorts,
       usedPorts,
       freePorts: Math.max(0, totalPorts - usedPorts),
     };
   });
+
+  protected readonly lastSyncedAt = signal<Date | null>(null);
+  protected readonly syncingSummary = computed(() => this.nodes.loading() || this.fiberLinks.loading());
 
   protected readonly byType = computed(() => {
     const all = this.nodes.value();
@@ -544,7 +563,39 @@ export class CoverageComponent {
       document.body.classList.toggle('map-fullpage-open', this.mapFullPage());
     });
 
+    // Marca ultima sincronizacion exitosa con dd_ms_network
+    effect(() => {
+      this.nodes.value();
+      if (!this.nodes.loading() && !this.nodes.error()) {
+        this.lastSyncedAt.set(new Date());
+      }
+    });
+
+    // Sincronizacion automatica en vivo con el backend (al volver a la pestana y cada 30s)
+    const syncIfIdle = () => {
+      if (
+        document.visibilityState === 'visible' &&
+        !this.saving() &&
+        !this.tracingFiber() &&
+        !this.relocatingNodeId()
+      ) {
+        this.nodes.reload();
+        this.fiberLinks.reload();
+      }
+    };
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        syncIfIdle();
+      }
+    };
+    const pollTimer = setInterval(syncIfIdle, 30_000);
+    document.addEventListener('visibilitychange', onVisibility);
+    window.addEventListener('focus', syncIfIdle);
+
     this.destroyRef.onDestroy(() => {
+      clearInterval(pollTimer);
+      document.removeEventListener('visibilitychange', onVisibility);
+      window.removeEventListener('focus', syncIfIdle);
       qpSub.unsubscribe();
       document.body.classList.remove('map-fullpage-open');
       this.map?.remove();
@@ -1188,6 +1239,7 @@ export class CoverageComponent {
           this.toast.success(
             `Cliente asignado a ${updated.name} (${updated.usedPorts}/${updated.napCapacity} puertos ocupados).`,
           );
+          this.nodes.reload();
         },
         error: (err: unknown) => {
           this.saving.set(false);
@@ -1207,6 +1259,7 @@ export class CoverageComponent {
         this.busyAssignmentId.set(null);
         this.nodes.update((list) => list.map((n) => (n.id === updated.id ? updated : n)));
         this.toast.success(`Puerto #${assignment.portNumber} liberado en ${updated.name}.`);
+        this.nodes.reload();
       },
       error: (err: unknown) => {
         this.busyAssignmentId.set(null);
@@ -1234,6 +1287,19 @@ export class CoverageComponent {
         this.toast.error(describeHttpError(err));
       },
     });
+  }
+
+  protected toggleNapQuickFilter(status: NapOccupancyStatus): void {
+    this.typeFilter.set('NAP');
+    this.napFilter.set(this.napFilter() === status ? 'ALL' : status);
+  }
+
+  protected toggleTypeQuickFilter(type: NodeType): void {
+    const next = this.typeFilter() === type ? 'ALL' : type;
+    this.typeFilter.set(next);
+    if (next !== 'NAP') {
+      this.napFilter.set('ALL');
+    }
   }
 
   protected setMapStyle(styleId: MapStyleId): void {
