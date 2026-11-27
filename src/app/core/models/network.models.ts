@@ -7,6 +7,7 @@ export type NodeType = 'POP' | 'NAP' | 'OLT_SITE' | 'TOWER';
 export type NodeStatus = 'ACTIVE' | 'INACTIVE';
 export type NapCapacity = 8 | 16;
 export type NapOccupancyStatus = 'AVAILABLE' | 'LOW' | 'FULL';
+export type FiberType = 'TRUNK' | 'DISTRIBUTION' | 'DROP';
 export type EquipmentType = 'ROUTER' | 'ONT' | 'SWITCH' | 'ANTENNA' | 'OTHER';
 export type EquipmentStatus = 'IN_STOCK' | 'ASSIGNED' | 'FAULTY' | 'RETIRED';
 
@@ -119,6 +120,40 @@ export interface UpdateNodeRequest {
 export interface AssignNapClientRequest {
   clientId: string;
   portNumber?: number | null;
+}
+
+export interface FiberPoint {
+  lat: number;
+  lon: number;
+}
+
+export interface FiberLink {
+  id: string;
+  name: string | null;
+  fromNodeId: string;
+  toNodeId: string;
+  fiberType: FiberType;
+  color: string;
+  waypoints: FiberPoint[];
+  createdAt: string;
+}
+
+export interface CreateFiberLinkRequest {
+  name?: string | null;
+  fromNodeId: string;
+  toNodeId: string;
+  fiberType?: FiberType;
+  color?: string;
+  waypoints?: FiberPoint[];
+}
+
+export interface UpdateFiberLinkRequest {
+  name?: string | null;
+  fromNodeId: string;
+  toNodeId: string;
+  fiberType?: FiberType;
+  color?: string;
+  waypoints?: FiberPoint[];
 }
 
 export interface Equipment {

@@ -26,6 +26,7 @@ export const API = {
     routers: `${base}/api/network/routers`,
     onu: `${base}/api/gpon/onu`,
     nodes: `${base}/api/coverage/nodes`,
+    links: `${base}/api/coverage/links`,
     equipment: `${base}/api/inventory/equipment`,
   },
   support: {

@@ -7,10 +7,12 @@ import {
   AssignNapClientRequest,
   AuthorizeOnuRequest,
   CreateEquipmentRequest,
+  CreateFiberLinkRequest,
   CreateNodeRequest,
   CreateRouterRequest,
   CutClientRequest,
   Equipment,
+  FiberLink,
   MikrotikRouter,
   NetworkNode,
   Onu,
@@ -18,6 +20,7 @@ import {
   RegisterOnuRequest,
   SignalUpdateRequest,
   UpdateEquipmentRequest,
+  UpdateFiberLinkRequest,
   UpdateNodeRequest,
 } from '../models';
 import { API } from './api.config';
@@ -93,6 +96,24 @@ export class NetworkApi {
 
   unassignNapClient(nodeId: string, assignmentId: string): Observable<NetworkNode> {
     return this.http.delete<NetworkNode>(`${API.network.nodes}/${nodeId}/assignments/${assignmentId}`);
+  }
+
+  // ---------- Trazados de fibra optica ----------
+
+  fiberLinks(): Observable<FiberLink[]> {
+    return this.http.get<FiberLink[]>(API.network.links);
+  }
+
+  createFiberLink(body: CreateFiberLinkRequest): Observable<FiberLink> {
+    return this.http.post<FiberLink>(API.network.links, body);
+  }
+
+  updateFiberLink(id: string, body: UpdateFiberLinkRequest): Observable<FiberLink> {
+    return this.http.put<FiberLink>(`${API.network.links}/${id}`, body);
+  }
+
+  deleteFiberLink(id: string): Observable<void> {
+    return this.http.delete<void>(`${API.network.links}/${id}`);
   }
 
   // ---------- Inventario ----------

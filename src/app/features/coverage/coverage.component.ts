@@ -15,6 +15,9 @@ import { catchError, of } from 'rxjs';
 import { CrmApi, NetworkApi } from '../../core/api';
 import {
   Client,
+  FiberLink,
+  FiberPoint,
+  FiberType,
   NapCapacity,
   NapOccupancyStatus,
   NapPortAssignment,
@@ -55,7 +58,15 @@ const NAP_OCCUPANCY_COLORS: Record<NapOccupancyStatus, string> = {
   FULL: '#ef4444',
 };
 
-const DEFAULT_CENTER: [number, number] = [1.2136, -77.2811];
+const FIBER_META: Record<FiberType, { text: string; badge: string; color: string; weight: number; dashArray?: string }> = {
+  TRUNK: { text: 'Troncal / Backbone', badge: 'badge-violet', color: '#7c3aed', weight: 5 },
+  DISTRIBUTION: { text: 'Distribucion', badge: 'badge-info', color: '#06b6d4', weight: 4 },
+  DROP: { text: 'Derivacion / Acometida', badge: 'badge-success', color: '#10b981', weight: 3, dashArray: '8 6' },
+};
+
+/** Providencia, Narino, Colombia (1.2390 N, -77.5974 W). */
+const DEFAULT_CENTER: [number, number] = [1.239, -77.5974];
+const DEFAULT_ZOOM = 15;
 
 /** Subconjunto minimo de la API global de Leaflet cargada via CDN en index.html. */
 interface LeafletTileLayer {
@@ -73,7 +84,7 @@ interface LeafletLayerGroup {
   clearLayers(): this;
   addTo(map: LeafletMap): this;
 }
-interface LeafletMarker {
+interface LeafletInteractiveLayer {
   bindPopup(html: string): this;
   addTo(target: LeafletLayerGroup | LeafletMap): this;
 }
@@ -82,14 +93,17 @@ interface LeafletStatic {
   tileLayer(url: string, opts?: Record<string, unknown>): LeafletTileLayer;
   layerGroup(): LeafletLayerGroup;
   divIcon(opts: Record<string, unknown>): unknown;
-  marker(latlng: [number, number], opts?: Record<string, unknown>): LeafletMarker;
+  marker(latlng: [number, number], opts?: Record<string, unknown>): LeafletInteractiveLayer;
+  polyline(latlngs: [number, number][], opts?: Record<string, unknown>): LeafletInteractiveLayer;
+  circleMarker(latlng: [number, number], opts?: Record<string, unknown>): LeafletInteractiveLayer;
 }
 
-type MapStyleId = 'streets' | 'topo' | 'relief' | 'satellite' | 'dark';
+type MapStyleId = 'relief' | 'topo' | 'streets' | 'satellite' | 'dark';
 
 interface MapTileSpec {
   url: string;
   maxZoom: number;
+  maxNativeZoom?: number;
   attribution: string;
   opacity?: number;
 }
@@ -103,14 +117,21 @@ interface MapStyleOption {
 
 const MAP_STYLES: MapStyleOption[] = [
   {
-    id: 'streets',
-    label: 'Calles',
-    icon: 'fas fa-road',
+    id: 'relief',
+    label: 'Relieve 3D',
+    icon: 'fas fa-mountain-sun',
     layers: [
       {
-        url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+        url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Shaded_Relief/MapServer/tile/{z}/{y}/{x}',
         maxZoom: 19,
-        attribution: '&copy; OpenStreetMap contributors',
+        maxNativeZoom: 13,
+        attribution: 'Tiles &copy; Esri &mdash; World Shaded Relief',
+      },
+      {
+        url: 'https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}',
+        maxZoom: 19,
+        attribution: '&copy; Esri',
+        opacity: 0.92,
       },
     ],
   },
@@ -121,26 +142,21 @@ const MAP_STYLES: MapStyleOption[] = [
     layers: [
       {
         url: 'https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png',
-        maxZoom: 17,
+        maxZoom: 19,
+        maxNativeZoom: 17,
         attribution: '&copy; OpenStreetMap, SRTM | &copy; OpenTopoMap (CC-BY-SA)',
       },
     ],
   },
   {
-    id: 'relief',
-    label: 'Relieve 3D',
-    icon: 'fas fa-mountain-sun',
+    id: 'streets',
+    label: 'Calles',
+    icon: 'fas fa-road',
     layers: [
       {
-        url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Shaded_Relief/MapServer/tile/{z}/{y}/{x}',
-        maxZoom: 13,
-        attribution: 'Tiles &copy; Esri &mdash; World Shaded Relief',
-      },
-      {
-        url: 'https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}',
+        url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
         maxZoom: 19,
-        attribution: '&copy; Esri',
-        opacity: 0.9,
+        attribution: '&copy; OpenStreetMap contributors',
       },
     ],
   },
@@ -179,6 +195,7 @@ const MAP_STYLES: MapStyleOption[] = [
 type TypeFilter = NodeType | 'ALL';
 type StatusFilter = NodeStatus | 'ALL';
 type NapFilter = NapOccupancyStatus | 'ALL';
+type FiberTypeFilter = FiberType | 'ALL';
 
 export interface NapPortSlot {
   portNumber: number;
@@ -186,8 +203,9 @@ export interface NapPortSlot {
 }
 
 /**
- * Cobertura: mapa interactivo Leaflet + OpenStreetMap, gestion de nodos,
- * capacidad de cajas NAP (1x8 / 1x16) y control de puertos asignados por cliente.
+ * Cobertura: mapa interactivo Leaflet en relieve centrado por defecto en
+ * Providencia, Narino (Colombia), gestion de nodos, control de cajas NAP
+ * (1x8 / 1x16) y trazado de conexiones de fibra optica entre nodos.
  */
 @Component({
   selector: 'app-coverage',
@@ -213,12 +231,18 @@ export class CoverageComponent {
   private readonly mapHost = viewChild<ElementRef<HTMLDivElement>>('mapHost');
   private map: LeafletMap | null = null;
   private markersLayer: LeafletLayerGroup | null = null;
+  private fiberLayer: LeafletLayerGroup | null = null;
+  private draftFiberLayer: LeafletLayerGroup | null = null;
   private activeTileLayers: LeafletTileLayer[] = [];
 
   protected readonly mapStyles = MAP_STYLES;
-  protected readonly mapStyle = signal<MapStyleId>('streets');
+  protected readonly mapStyle = signal<MapStyleId>('relief');
 
   protected readonly nodes = collection(() => this.api.nodes(), [] as NetworkNode[]);
+  protected readonly fiberLinks = collection(
+    () => this.api.fiberLinks().pipe(catchError(() => of([] as FiberLink[]))),
+    [] as FiberLink[],
+  );
   protected readonly clients = collection(
     () => this.crm.clients().pipe(catchError(() => of([] as Client[]))),
     [] as Client[],
@@ -227,11 +251,17 @@ export class CoverageComponent {
   protected readonly leafletReady = signal(typeof this.leaflet() !== 'undefined');
   protected readonly pickedCoords = signal<{ lat: number; lon: number } | null>(null);
 
+  // Filtros de nodos
   protected readonly search = signal('');
   protected readonly typeFilter = signal<TypeFilter>('ALL');
   protected readonly statusFilter = signal<StatusFilter>('ALL');
   protected readonly napFilter = signal<NapFilter>('ALL');
 
+  // Filtros de trazados de fibra
+  protected readonly linkSearch = signal('');
+  protected readonly linkTypeFilter = signal<FiberTypeFilter>('ALL');
+
+  // Modales de nodos / NAP
   protected readonly modalOpen = signal(false);
   protected readonly editing = signal<NetworkNode | null>(null);
   protected readonly deleting = signal<NetworkNode | null>(null);
@@ -243,12 +273,30 @@ export class CoverageComponent {
   protected readonly saving = signal(false);
   protected readonly busyAssignmentId = signal<string | null>(null);
 
+  // Modales y modo de trazado de fibra optica
+  protected readonly linkModalOpen = signal(false);
+  protected readonly editingLink = signal<FiberLink | null>(null);
+  protected readonly deletingLink = signal<FiberLink | null>(null);
+  protected readonly tracingFiber = signal(false);
+  protected readonly draftWaypoints = signal<FiberPoint[]>([]);
+  protected readonly draftFromNodeId = signal('');
+  protected readonly draftToNodeId = signal('');
+  protected readonly draftFiberColor = signal('#06b6d4');
+
   protected readonly nodeTypes: { value: NodeType; text: string }[] = [
     { value: 'POP', text: 'POP / nodo de distribucion' },
     { value: 'NAP', text: 'Caja NAP' },
     { value: 'OLT_SITE', text: 'Sitio de OLT' },
     { value: 'TOWER', text: 'Torre / antena' },
   ];
+
+  protected readonly fiberTypes: { value: FiberType; text: string; color: string }[] = [
+    { value: 'TRUNK', text: 'Troncal / Backbone', color: '#7c3aed' },
+    { value: 'DISTRIBUTION', text: 'Distribucion', color: '#06b6d4' },
+    { value: 'DROP', text: 'Derivacion / Acometida', color: '#10b981' },
+  ];
+
+  protected readonly fiberColorPresets = ['#7c3aed', '#06b6d4', '#10b981', '#f59e0b', '#ef4444', '#ec4899'];
 
   protected readonly napCapacities: { value: NapCapacity; text: string }[] = [
     { value: 8, text: '1x8 (8 puertos)' },
@@ -282,6 +330,18 @@ export class CoverageComponent {
     portNumber: [''],
   });
 
+  protected readonly linkForm = this.fb.nonNullable.group({
+    name: [''],
+    fromNodeId: ['', Validators.required],
+    toNodeId: ['', Validators.required],
+    fiberType: ['DISTRIBUTION' as FiberType, Validators.required],
+    color: ['#06b6d4', Validators.required],
+  });
+
+  protected readonly nodesById = computed(
+    () => new Map(this.nodes.value().map((n) => [n.id, n])),
+  );
+
   /** Caja NAP actualmente abierta en el modal de control de puertos. */
   protected readonly managingNap = computed<NetworkNode | null>(() => {
     const id = this.managingNapId();
@@ -291,7 +351,6 @@ export class CoverageComponent {
     return this.nodes.value().find((n) => n.id === id) ?? null;
   });
 
-  /** Mapa clienteId -> nombre de caja NAP + puerto donde ya esta conectado. */
   protected readonly clientNapIndex = computed(() => {
     const map = new Map<string, { nodeName: string; portNumber: number }>();
     for (const node of this.nodes.value()) {
@@ -388,7 +447,37 @@ export class CoverageComponent {
 
   protected readonly pager = paginate(this.filtered, 10);
 
-  /** Fallback relativo si el CDN de Leaflet no esta disponible (modo sin conexion). */
+  protected readonly filteredLinks = computed(() => {
+    const term = normalize(this.linkSearch());
+    const type = this.linkTypeFilter();
+    const map = this.nodesById();
+    return this.fiberLinks.value().filter((link) => {
+      if (type !== 'ALL' && link.fiberType !== type) {
+        return false;
+      }
+      if (!term) {
+        return true;
+      }
+      const fromName = map.get(link.fromNodeId)?.name ?? '';
+      const toName = map.get(link.toNodeId)?.name ?? '';
+      return [link.name, fromName, toName, FIBER_META[link.fiberType].text]
+        .map((v) => normalize(v))
+        .some((v) => v.includes(term));
+    });
+  });
+
+  protected readonly linksPager = paginate(this.filteredLinks, 10);
+
+  protected readonly totalFiberMeters = computed(() =>
+    this.fiberLinks.value().reduce((sum, link) => sum + this.linkDistanceMeters(link), 0),
+  );
+
+  protected readonly draftDistanceMeters = computed(() => {
+    const coords = this.draftPolylineCoords();
+    return polylineDistanceMeters(coords);
+  });
+
+  /** Fallback relativo si el CDN de Leaflet no esta disponible. */
   protected readonly plotted = computed(() => {
     const all = this.filtered();
     if (all.length === 0) {
@@ -416,19 +505,65 @@ export class CoverageComponent {
     effect(() => {
       const host = this.mapHost()?.nativeElement;
       const list = this.filtered();
+      const links = this.fiberLinks.value();
+      const mapById = this.nodesById();
       if (!host) {
         return;
       }
       this.ensureMap(host);
+      this.renderFiberLinks(links, mapById);
       this.renderMarkers(list);
+    });
+
+    effect(() => {
+      const tracing = this.tracingFiber();
+      const waypoints = this.draftWaypoints();
+      const fromId = this.draftFromNodeId();
+      const toId = this.draftToNodeId();
+      const color = this.draftFiberColor();
+      this.renderDraftFiber(tracing, fromId, toId, waypoints, color);
     });
 
     this.destroyRef.onDestroy(() => {
       this.map?.remove();
       this.map = null;
       this.markersLayer = null;
+      this.fiberLayer = null;
+      this.draftFiberLayer = null;
       this.activeTileLayers = [];
     });
+  }
+
+  protected nodeName(nodeId: string): string {
+    return this.nodesById().get(nodeId)?.name ?? 'Nodo eliminado';
+  }
+
+  protected fiberMeta(type: FiberType): { text: string; badge: string; color: string } {
+    return FIBER_META[type];
+  }
+
+  protected linkCoords(link: FiberLink): [number, number][] {
+    const from = this.nodesById().get(link.fromNodeId);
+    const to = this.nodesById().get(link.toNodeId);
+    if (!from || !to) {
+      return [];
+    }
+    return [
+      [from.latitude, from.longitude],
+      ...(link.waypoints ?? []).map((p) => [p.lat, p.lon] as [number, number]),
+      [to.latitude, to.longitude],
+    ];
+  }
+
+  protected linkDistanceMeters(link: FiberLink): number {
+    return polylineDistanceMeters(this.linkCoords(link));
+  }
+
+  protected formatDistance(meters: number): string {
+    if (meters >= 1000) {
+      return `${(meters / 1000).toFixed(2)} km`;
+    }
+    return `${Math.round(meters)} m`;
   }
 
   protected napOccupancyMeta(node: NetworkNode): { text: string; badge: string; color: string; pct: number } {
@@ -470,8 +605,16 @@ export class CoverageComponent {
 
   protected focusNode(node: NetworkNode): void {
     if (this.map) {
-      this.map.setView([node.latitude, node.longitude], 16);
+      this.map.setView([node.latitude, node.longitude], 17);
     }
+  }
+
+  protected focusLink(link: FiberLink): void {
+    const coords = this.linkCoords(link);
+    if (!this.map || coords.length === 0) {
+      return;
+    }
+    this.map.fitBounds(coords, { padding: [50, 50], maxZoom: 17 });
   }
 
   protected recenterMap(): void {
@@ -480,18 +623,20 @@ export class CoverageComponent {
     }
     const list = this.filtered();
     if (list.length === 0) {
-      this.map.setView(DEFAULT_CENTER, 13);
+      this.map.setView(DEFAULT_CENTER, DEFAULT_ZOOM);
       return;
     }
     if (list.length === 1) {
-      this.map.setView([list[0].latitude, list[0].longitude], 15);
+      this.map.setView([list[0].latitude, list[0].longitude], 16);
       return;
     }
     this.map.fitBounds(
       list.map((n) => [n.latitude, n.longitude] as [number, number]),
-      { padding: [40, 40], maxZoom: 16 },
+      { padding: [40, 40], maxZoom: 17 },
     );
   }
+
+  // ---------- Nodos y NAP ----------
 
   protected openCreate(lat?: number, lon?: number): void {
     const picked = this.pickedCoords();
@@ -560,11 +705,182 @@ export class CoverageComponent {
     this.deleting.set(node);
   }
 
+  // ---------- Trazados de fibra optica ----------
+
+  protected openCreateLink(keepDraft = false): void {
+    const all = this.nodes.value();
+    if (all.length < 2) {
+      this.toast.error('Registra al menos 2 nodos para trazar una conexion de fibra optica.');
+      return;
+    }
+    this.editingLink.set(null);
+    if (!keepDraft) {
+      const fromId = all[0].id;
+      const toId = all[1].id;
+      this.draftFromNodeId.set(fromId);
+      this.draftToNodeId.set(toId);
+      this.draftFiberColor.set(FIBER_META.DISTRIBUTION.color);
+      this.draftWaypoints.set([]);
+      this.linkForm.reset({
+        name: '',
+        fromNodeId: fromId,
+        toNodeId: toId,
+        fiberType: 'DISTRIBUTION',
+        color: FIBER_META.DISTRIBUTION.color,
+      });
+    }
+    this.tracingFiber.set(false);
+    this.linkModalOpen.set(true);
+  }
+
+  protected openEditLink(link: FiberLink): void {
+    this.editingLink.set(link);
+    this.draftFromNodeId.set(link.fromNodeId);
+    this.draftToNodeId.set(link.toNodeId);
+    this.draftFiberColor.set(link.color);
+    this.draftWaypoints.set([...(link.waypoints ?? [])]);
+    this.linkForm.reset({
+      name: link.name ?? '',
+      fromNodeId: link.fromNodeId,
+      toNodeId: link.toNodeId,
+      fiberType: link.fiberType,
+      color: link.color,
+    });
+    this.tracingFiber.set(false);
+    this.linkModalOpen.set(true);
+  }
+
+  protected startTraceOnMap(): void {
+    const raw = this.linkForm.getRawValue();
+    if (!raw.fromNodeId || !raw.toNodeId || raw.fromNodeId === raw.toNodeId) {
+      this.toast.error('Selecciona un nodo de origen y un nodo de destino diferentes antes de trazar.');
+      return;
+    }
+    this.draftFromNodeId.set(raw.fromNodeId);
+    this.draftToNodeId.set(raw.toNodeId);
+    this.draftFiberColor.set(raw.color);
+    this.linkModalOpen.set(false);
+    this.tracingFiber.set(true);
+
+    const coords = this.draftPolylineCoords();
+    if (this.map && coords.length >= 2) {
+      this.map.fitBounds(coords, { padding: [55, 55], maxZoom: 17 });
+    }
+  }
+
+  protected undoDraftWaypoint(): void {
+    this.draftWaypoints.update((pts) => pts.slice(0, -1));
+  }
+
+  protected clearDraftWaypoints(): void {
+    this.draftWaypoints.set([]);
+  }
+
+  protected finishTraceAndOpenModal(): void {
+    this.tracingFiber.set(false);
+    this.linkModalOpen.set(true);
+  }
+
+  protected cancelTrace(): void {
+    this.tracingFiber.set(false);
+    this.draftWaypoints.set([]);
+  }
+
+  protected onLinkFromChange(nodeId: string): void {
+    this.draftFromNodeId.set(nodeId);
+  }
+
+  protected onLinkToChange(nodeId: string): void {
+    this.draftToNodeId.set(nodeId);
+  }
+
+  protected onFiberTypeChange(type: FiberType): void {
+    const color = FIBER_META[type].color;
+    this.linkForm.controls.color.setValue(color);
+    this.draftFiberColor.set(color);
+  }
+
+  protected setFiberColor(color: string): void {
+    this.linkForm.controls.color.setValue(color);
+    this.draftFiberColor.set(color);
+  }
+
+  protected saveLink(): void {
+    if (this.linkForm.invalid || this.saving()) {
+      this.linkForm.markAllAsTouched();
+      return;
+    }
+    const raw = this.linkForm.getRawValue();
+    if (raw.fromNodeId === raw.toNodeId) {
+      this.toast.error('El nodo origen y el nodo destino deben ser diferentes.');
+      return;
+    }
+    const current = this.editingLink();
+    const payload = {
+      name: raw.name.trim() || null,
+      fromNodeId: raw.fromNodeId,
+      toNodeId: raw.toNodeId,
+      fiberType: raw.fiberType,
+      color: raw.color,
+      waypoints: this.draftWaypoints(),
+    };
+
+    this.saving.set(true);
+    const request$ = current
+      ? this.api.updateFiberLink(current.id, payload)
+      : this.api.createFiberLink(payload);
+
+    request$.subscribe({
+      next: () => {
+        this.saving.set(false);
+        this.linkModalOpen.set(false);
+        this.editingLink.set(null);
+        this.tracingFiber.set(false);
+        this.draftWaypoints.set([]);
+        this.toast.success(
+          current ? 'Trazado de fibra optica actualizado.' : 'Conexion de fibra optica guardada.',
+        );
+        this.fiberLinks.reload();
+      },
+      error: (err: unknown) => {
+        this.saving.set(false);
+        this.toast.error(describeHttpError(err));
+      },
+    });
+  }
+
+  protected confirmDeleteLink(link: FiberLink): void {
+    this.deletingLink.set(link);
+  }
+
+  protected removeLink(): void {
+    const target = this.deletingLink();
+    if (!target || this.saving()) {
+      return;
+    }
+    this.saving.set(true);
+    this.api.deleteFiberLink(target.id).subscribe({
+      next: () => {
+        this.saving.set(false);
+        this.deletingLink.set(null);
+        this.toast.success('Trazado de fibra eliminado.');
+        this.fiberLinks.reload();
+      },
+      error: (err: unknown) => {
+        this.saving.set(false);
+        this.toast.error(describeHttpError(err));
+      },
+    });
+  }
+
   protected close(): void {
     this.modalOpen.set(false);
     this.editing.set(null);
     this.deleting.set(null);
     this.managingNapId.set(null);
+    this.linkModalOpen.set(false);
+    this.editingLink.set(null);
+    this.deletingLink.set(null);
   }
 
   protected save(): void {
@@ -682,6 +998,7 @@ export class CoverageComponent {
         this.deleting.set(null);
         this.toast.success(`Nodo "${node.name}" eliminado.`);
         this.nodes.reload();
+        this.fiberLinks.reload();
       },
       error: (err: unknown) => {
         this.saving.set(false);
@@ -693,6 +1010,24 @@ export class CoverageComponent {
   protected setMapStyle(styleId: MapStyleId): void {
     this.mapStyle.set(styleId);
     this.applyBaseLayers(styleId);
+  }
+
+  protected reloadAll(): void {
+    this.nodes.reload();
+    this.fiberLinks.reload();
+  }
+
+  private draftPolylineCoords(): [number, number][] {
+    const from = this.nodesById().get(this.draftFromNodeId());
+    const to = this.nodesById().get(this.draftToNodeId());
+    if (!from || !to) {
+      return [];
+    }
+    return [
+      [from.latitude, from.longitude],
+      ...this.draftWaypoints().map((p) => [p.lat, p.lon] as [number, number]),
+      [to.latitude, to.longitude],
+    ];
   }
 
   private leaflet(): LeafletStatic | undefined {
@@ -711,14 +1046,20 @@ export class CoverageComponent {
     }
     const map = L.map(host, { zoomControl: true, scrollWheelZoom: true }).setView(
       DEFAULT_CENTER,
-      13,
+      DEFAULT_ZOOM,
     );
     this.map = map;
     this.applyBaseLayers(this.mapStyle());
+    this.fiberLayer = L.layerGroup().addTo(map);
+    this.draftFiberLayer = L.layerGroup().addTo(map);
     this.markersLayer = L.layerGroup().addTo(map);
     map.on('click', (e) => {
       const lat = Number(e.latlng.lat.toFixed(6));
       const lon = Number(e.latlng.lng.toFixed(6));
+      if (this.tracingFiber()) {
+        this.draftWaypoints.update((pts) => [...pts, { lat, lon }]);
+        return;
+      }
       this.pickedCoords.set({ lat, lon });
     });
     setTimeout(() => this.map?.invalidateSize(), 150);
@@ -738,10 +1079,108 @@ export class CoverageComponent {
     for (const tile of spec.layers) {
       const layer = L.tileLayer(tile.url, {
         maxZoom: tile.maxZoom,
+        ...(tile.maxNativeZoom !== undefined ? { maxNativeZoom: tile.maxNativeZoom } : {}),
         attribution: tile.attribution,
         ...(tile.opacity !== undefined ? { opacity: tile.opacity } : {}),
       }).addTo(this.map);
       this.activeTileLayers.push(layer);
+    }
+  }
+
+  private renderFiberLinks(links: FiberLink[], nodesMap: Map<string, NetworkNode>): void {
+    const L = this.leaflet();
+    if (!L || !this.map || !this.fiberLayer) {
+      return;
+    }
+    this.fiberLayer.clearLayers();
+
+    for (const link of links) {
+      const from = nodesMap.get(link.fromNodeId);
+      const to = nodesMap.get(link.toNodeId);
+      if (!from || !to) {
+        continue;
+      }
+      const coords: [number, number][] = [
+        [from.latitude, from.longitude],
+        ...(link.waypoints ?? []).map((p) => [p.lat, p.lon] as [number, number]),
+        [to.latitude, to.longitude],
+      ];
+      const meta = FIBER_META[link.fiberType] ?? FIBER_META.DISTRIBUTION;
+      const color = link.color || meta.color;
+      const distText = this.formatDistance(polylineDistanceMeters(coords));
+      const title = escapeHtml(link.name || `${from.name} → ${to.name}`);
+
+      // Contorno sutil para contraste sobre relieve o satelite
+      L.polyline(coords, {
+        color: '#ffffff',
+        weight: meta.weight + 3,
+        opacity: 0.65,
+        lineCap: 'round',
+        lineJoin: 'round',
+      }).addTo(this.fiberLayer);
+
+      // Linea principal de fibra optica
+      L.polyline(coords, {
+        color,
+        weight: meta.weight,
+        opacity: 0.95,
+        lineCap: 'round',
+        lineJoin: 'round',
+        ...(meta.dashArray ? { dashArray: meta.dashArray } : {}),
+      })
+        .bindPopup(
+          `<div style="min-width:180px;font-family:inherit">
+            <strong style="font-size:13px">${title}</strong><br/>
+            <span style="font-size:11px;color:#475569">${escapeHtml(from.name)} &rarr; ${escapeHtml(to.name)}</span>
+            <div style="margin-top:4px;font-size:11px;font-weight:700;color:${escapeHtml(color)}">
+              ${escapeHtml(meta.text)} · ${escapeHtml(distText)}
+            </div>
+          </div>`,
+        )
+        .addTo(this.fiberLayer);
+    }
+  }
+
+  private renderDraftFiber(
+    tracing: boolean,
+    fromId: string,
+    toId: string,
+    waypoints: FiberPoint[],
+    color: string,
+  ): void {
+    const L = this.leaflet();
+    if (!L || !this.draftFiberLayer) {
+      return;
+    }
+    this.draftFiberLayer.clearLayers();
+    if (!tracing) {
+      return;
+    }
+    const from = this.nodesById().get(fromId);
+    const to = this.nodesById().get(toId);
+    if (!from || !to) {
+      return;
+    }
+    const coords: [number, number][] = [
+      [from.latitude, from.longitude],
+      ...waypoints.map((p) => [p.lat, p.lon] as [number, number]),
+      [to.latitude, to.longitude],
+    ];
+    L.polyline(coords, {
+      color,
+      weight: 4,
+      opacity: 0.95,
+      dashArray: '10 6',
+    }).addTo(this.draftFiberLayer);
+
+    for (const pt of waypoints) {
+      L.circleMarker([pt.lat, pt.lon], {
+        radius: 5,
+        color: '#ffffff',
+        weight: 2,
+        fillColor: color,
+        fillOpacity: 1,
+      }).addTo(this.draftFiberLayer);
     }
   }
 
@@ -802,11 +1241,11 @@ export class CoverageComponent {
     }
 
     if (list.length === 1) {
-      this.map.setView([list[0].latitude, list[0].longitude], 15);
+      this.map.setView([list[0].latitude, list[0].longitude], 16);
     } else if (list.length > 1) {
       this.map.fitBounds(
         list.map((n) => [n.latitude, n.longitude] as [number, number]),
-        { padding: [40, 40], maxZoom: 16 },
+        { padding: [40, 40], maxZoom: 17 },
       );
     }
   }
@@ -821,4 +1260,25 @@ function escapeHtml(value: string): string {
     .replaceAll('<', '&lt;')
     .replaceAll('>', '&gt;')
     .replaceAll('"', '&quot;');
+}
+
+/** Distancia total aproximada en metros usando formula de Haversine. */
+function polylineDistanceMeters(coords: [number, number][]): number {
+  if (coords.length < 2) {
+    return 0;
+  }
+  const R = 6_371_000;
+  const toRad = (deg: number) => (deg * Math.PI) / 180;
+  let total = 0;
+  for (let i = 1; i < coords.length; i++) {
+    const [lat1, lon1] = coords[i - 1];
+    const [lat2, lon2] = coords[i];
+    const dLat = toRad(lat2 - lat1);
+    const dLon = toRad(lon2 - lon1);
+    const a =
+      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+      Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
+    total += 2 * R * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  }
+  return total;
 }

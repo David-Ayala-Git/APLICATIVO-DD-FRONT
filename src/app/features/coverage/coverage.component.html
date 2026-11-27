@@ -1,16 +1,26 @@
 <div class="page">
   <app-page-head
     title="Cobertura y mapas"
-    subtitle="Mapa interactivo de nodos, control de cajas NAP (1x8 / 1x16) y asignacion de puertos por cliente"
+    subtitle="Mapa en relieve de Providencia, Narino · control de cajas NAP (1x8 / 1x16) y trazados de fibra optica"
   >
     <button
       appRipple
       type="button"
       class="btn btn-outline btn-sm"
-      [disabled]="nodes.loading()"
-      (click)="nodes.reload()"
+      [disabled]="nodes.loading() || fiberLinks.loading()"
+      (click)="reloadAll()"
     >
       <i class="fas fa-rotate"></i> Actualizar
+    </button>
+    <button
+      appRipple
+      type="button"
+      class="btn btn-accent btn-sm"
+      [disabled]="nodes.value().length < 2"
+      title="Conectar dos nodos con un trazado de fibra optica"
+      (click)="openCreateLink()"
+    >
+      <i class="fas fa-bezier-curve"></i> Conectar fibra
     </button>
     <button appRipple type="button" class="btn btn-grad btn-sm" (click)="openCreate()">
       <i class="fas fa-map-pin"></i> Registrar nodo
@@ -23,7 +33,11 @@
         <div>
           <h3>Mapa de cobertura</h3>
           <div class="sub">
-            @if (pickedCoords(); as coords) {
+            @if (tracingFiber()) {
+              <b style="color: var(--brand-1)">Modo trazado de fibra:</b>
+              haz clic sobre el mapa para agregar postes o esquinas intermedias
+              ({{ draftWaypoints().length }} punto(s) · {{ formatDistance(draftDistanceMeters()) }})
+            } @else if (pickedCoords(); as coords) {
               Punto seleccionado: <span class="mono">{{ coords.lat }}, {{ coords.lon }}</span>
               <button
                 type="button"
@@ -34,7 +48,7 @@
                 <i class="fas fa-plus"></i> Crear nodo aqui
               </button>
             } @else {
-              Las cajas NAP cambian de color segun disponibilidad: verde (disponible), amarillo (pocos puertos), rojo (llena)
+              Ubicacion base: Providencia, Narino · verde (disponible), amarillo (pocos puertos), rojo (llena)
             }
           </div>
         </div>
@@ -45,6 +59,11 @@
             </button>
           }
           <span class="badge badge-info">{{ filtered().length }} nodos</span>
+          @if (fiberLinks.value().length > 0) {
+            <span class="badge badge-violet">
+              <i class="fas fa-bezier-curve"></i> {{ fiberLinks.value().length }} fibra(s) · {{ formatDistance(totalFiberMeters()) }}
+            </span>
+          }
         </div>
       </div>
 
@@ -52,7 +71,7 @@
         <app-async-state
           [loading]="false"
           [error]="nodes.error()"
-          (retry)="nodes.reload()"
+          (retry)="reloadAll()"
         />
       } @else if (leafletReady()) {
         <div class="coverage-map-toolbar" role="group" aria-label="Tipo de relieve del mapa">
@@ -71,6 +90,52 @@
             </button>
           }
         </div>
+
+        @if (tracingFiber()) {
+          <div
+            class="coverage-map-toolbar"
+            style="background: var(--purple-light); border-bottom-color: rgba(124, 58, 237, 0.25); justify-content: space-between"
+          >
+            <div class="row-wrap" style="gap: 0.5rem; font-size: 0.8rem">
+              <i class="fas fa-bezier-curve" style="color: var(--brand-1)"></i>
+              <span>
+                Trazando <b>{{ nodeName(draftFromNodeId()) }}</b> &rarr;
+                <b>{{ nodeName(draftToNodeId()) }}</b>
+                · <b>{{ draftWaypoints().length }}</b> punto(s) intermedio(s)
+              </span>
+            </div>
+            <div class="row-wrap" style="gap: 0.35rem">
+              <button
+                type="button"
+                class="btn btn-outline btn-sm"
+                [disabled]="draftWaypoints().length === 0"
+                (click)="undoDraftWaypoint()"
+              >
+                <i class="fas fa-rotate-left"></i> Deshacer punto
+              </button>
+              <button
+                type="button"
+                class="btn btn-outline btn-sm"
+                [disabled]="draftWaypoints().length === 0"
+                (click)="clearDraftWaypoints()"
+              >
+                Limpiar
+              </button>
+              <button type="button" class="btn btn-ghost btn-sm" (click)="cancelTrace()">
+                Cancelar
+              </button>
+              <button
+                appRipple
+                type="button"
+                class="btn btn-grad btn-sm"
+                (click)="finishTraceAndOpenModal()"
+              >
+                <i class="fas fa-check"></i> Listo, guardar fibra
+              </button>
+            </div>
+          </div>
+        }
+
         <div class="coverage-map-leaflet" #mapHost aria-label="Mapa interactivo de cobertura"></div>
       } @else if (plotted().length === 0) {
         <div class="empty">
@@ -188,6 +253,146 @@
     </div>
   </div>
 
+  <!-- Trazados de fibra optica -->
+  <div class="card" style="margin-top: 1rem">
+    <div class="card-header">
+      <div>
+        <h3>Trazados de fibra optica</h3>
+        <div class="sub">
+          Conexiones entre nodos dibujadas sobre el mapa · longitud total estimada:
+          <b>{{ formatDistance(totalFiberMeters()) }}</b>
+        </div>
+      </div>
+      <div class="row-wrap">
+        <div class="topbar-search" style="max-width: 230px">
+          <i class="fas fa-search"></i>
+          <input
+            placeholder="Buscar tramo o nodo…"
+            [value]="linkSearch()"
+            (input)="linkSearch.set($any($event.target).value)"
+            aria-label="Buscar trazado de fibra"
+          />
+        </div>
+        <select
+          class="form-control"
+          style="width: auto; padding: 0.4rem 2.2rem 0.4rem 0.7rem; font-size: 0.8rem"
+          [value]="linkTypeFilter()"
+          (change)="linkTypeFilter.set($any($event.target).value)"
+          aria-label="Filtrar por tipo de fibra"
+        >
+          <option value="ALL">Todos los tipos</option>
+          @for (ft of fiberTypes; track ft.value) {
+            <option [value]="ft.value">{{ ft.text }}</option>
+          }
+        </select>
+        <button
+          appRipple
+          type="button"
+          class="btn btn-accent btn-sm"
+          [disabled]="nodes.value().length < 2"
+          (click)="openCreateLink()"
+        >
+          <i class="fas fa-plus"></i> Nuevo trazado
+        </button>
+      </div>
+    </div>
+
+    <app-async-state
+      [loading]="fiberLinks.loading()"
+      [error]="fiberLinks.error()"
+      [empty]="filteredLinks().length === 0"
+      emptyIcon="fas fa-bezier-curve"
+      emptyTitle="Sin trazados de fibra optica"
+      emptyText="Conecta dos nodos (POP, OLT, torre o Caja NAP) para visualizar el recorrido de la fibra en el mapa."
+      (retry)="fiberLinks.reload()"
+    />
+
+    @if (!fiberLinks.loading() && !fiberLinks.error() && filteredLinks().length > 0) {
+      <div class="table-wrap">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Tramo</th>
+              <th>Conexion (Origen &rarr; Destino)</th>
+              <th>Tipo de fibra</th>
+              <th>Puntos / Longitud</th>
+              <th>Creado</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (link of linksPager.items(); track link.id) {
+              <tr>
+                <td class="cell-main">
+                  <span
+                    style="
+                      display: inline-block;
+                      width: 11px;
+                      height: 11px;
+                      border-radius: 50%;
+                      margin-right: 0.45rem;
+                      vertical-align: middle;
+                    "
+                    [style.background]="link.color"
+                  ></span>
+                  {{ link.name || (nodeName(link.fromNodeId) + ' → ' + nodeName(link.toNodeId)) }}
+                </td>
+                <td>
+                  <span class="cell-main">{{ nodeName(link.fromNodeId) }}</span>
+                  <i class="fas fa-arrow-right" style="margin: 0 0.4rem; color: var(--text-muted); font-size: 0.72rem"></i>
+                  <span class="cell-main">{{ nodeName(link.toNodeId) }}</span>
+                </td>
+                <td>
+                  <span class="badge {{ fiberMeta(link.fiberType).badge }}">
+                    {{ fiberMeta(link.fiberType).text }}
+                  </span>
+                </td>
+                <td>
+                  <b class="mono">{{ formatDistance(linkDistanceMeters(link)) }}</b>
+                  <div class="cell-sub">
+                    {{ link.waypoints.length === 0 ? 'Linea directa' : (link.waypoints.length + ' punto(s) intermedio(s)') }}
+                  </div>
+                </td>
+                <td class="cell-sub">{{ link.createdAt | date: 'dd/MM/yyyy' }}</td>
+                <td class="actions">
+                  @if (leafletReady()) {
+                    <button
+                      type="button"
+                      class="btn btn-ghost btn-icon"
+                      title="Ver trazado en el mapa"
+                      (click)="focusLink(link)"
+                    >
+                      <i class="fas fa-location-crosshairs"></i>
+                    </button>
+                  }
+                  <button
+                    type="button"
+                    class="btn btn-ghost btn-icon"
+                    title="Editar trazado"
+                    (click)="openEditLink(link)"
+                  >
+                    <i class="fas fa-pen"></i>
+                  </button>
+                  <button
+                    type="button"
+                    class="btn btn-ghost btn-icon"
+                    style="color: var(--danger)"
+                    title="Eliminar trazado"
+                    (click)="confirmDeleteLink(link)"
+                  >
+                    <i class="fas fa-trash"></i>
+                  </button>
+                </td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+      <app-table-pager [pager]="linksPager" />
+    }
+  </div>
+
+  <!-- Tabla de nodos -->
   <div class="card" style="margin-top: 1rem">
     <div class="card-header">
       <div class="topbar-search">
@@ -356,6 +561,7 @@
   </div>
 </div>
 
+<!-- Modal crear / editar nodo -->
 @if (modalOpen()) {
   <app-modal
     [title]="editing() ? 'Editar nodo de cobertura' : 'Registrar nodo de cobertura'"
@@ -364,7 +570,7 @@
     <form [formGroup]="form" (ngSubmit)="save()" id="node-form">
       <div class="form-group">
         <label for="n-name">Nombre</label>
-        <input id="n-name" class="form-control" formControlName="name" placeholder="NAP-14 Barrio Norte" />
+        <input id="n-name" class="form-control" formControlName="name" placeholder="NAP-01 Parque Providencia" />
         @if (form.controls.name.touched && form.controls.name.invalid) {
           <div class="field-error">El nombre es obligatorio.</div>
         }
@@ -436,7 +642,9 @@
         </div>
       </div>
 
-      <p class="hint">Puedes hacer clic en cualquier punto del mapa para capturar las coordenadas exactas.</p>
+      <p class="hint">
+        Los valores por defecto corresponden a Providencia, Narino, Colombia. Tambien puedes hacer clic en el mapa para capturar coordenadas.
+      </p>
     </form>
 
     <ng-container modalFooter>
@@ -453,6 +661,133 @@
   </app-modal>
 }
 
+<!-- Modal crear / editar trazado de fibra optica -->
+@if (linkModalOpen()) {
+  <app-modal
+    [title]="editingLink() ? 'Editar trazado de fibra optica' : 'Conectar nodos con fibra optica'"
+    (close)="close()"
+  >
+    <form [formGroup]="linkForm" (ngSubmit)="saveLink()" id="fiber-link-form">
+      <div class="form-group">
+        <label for="fl-name">Nombre del tramo (opcional)</label>
+        <input
+          id="fl-name"
+          class="form-control"
+          formControlName="name"
+          placeholder="Troncal 24H Parque → Barrio Centro"
+        />
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label for="fl-from">Nodo origen</label>
+          <select
+            id="fl-from"
+            class="form-control"
+            formControlName="fromNodeId"
+            (change)="onLinkFromChange($any($event.target).value)"
+          >
+            @for (node of nodes.value(); track node.id) {
+              <option [value]="node.id">{{ node.name }} ({{ typeLabel(node.type).text }})</option>
+            }
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label for="fl-to">Nodo destino</label>
+          <select
+            id="fl-to"
+            class="form-control"
+            formControlName="toNodeId"
+            (change)="onLinkToChange($any($event.target).value)"
+          >
+            @for (node of nodes.value(); track node.id) {
+              <option [value]="node.id">{{ node.name }} ({{ typeLabel(node.type).text }})</option>
+            }
+          </select>
+        </div>
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label for="fl-type">Tipo de fibra</label>
+          <select
+            id="fl-type"
+            class="form-control"
+            formControlName="fiberType"
+            (change)="onFiberTypeChange($any($event.target).value)"
+          >
+            @for (ft of fiberTypes; track ft.value) {
+              <option [value]="ft.value">{{ ft.text }}</option>
+            }
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label>Color de la linea</label>
+          <div class="row-wrap" style="gap: 0.45rem; padding-top: 0.3rem">
+            @for (hex of fiberColorPresets; track hex) {
+              <button
+                type="button"
+                [style.background]="hex"
+                [style.outline]="draftFiberColor() === hex ? '2px solid var(--text-primary)' : 'none'"
+                [style.outline-offset]="'2px'"
+                style="width: 26px; height: 26px; border-radius: 50%; border: 2px solid #fff; cursor: pointer; box-shadow: 0 2px 6px rgba(0,0,0,.2)"
+                [title]="'Color ' + hex"
+                (click)="setFiberColor(hex)"
+              ></button>
+            }
+          </div>
+        </div>
+      </div>
+
+      <div
+        class="row-wrap"
+        style="
+          justify-content: space-between;
+          padding: 0.7rem 0.85rem;
+          background: var(--surface-2);
+          border: 1px solid var(--border);
+          border-radius: var(--radius);
+          margin-bottom: 0.5rem;
+        "
+      >
+        <div>
+          <div class="cell-main" style="font-size: 0.82rem">
+            Recorrido:
+            {{ draftWaypoints().length === 0 ? 'Linea directa entre nodos' : (draftWaypoints().length + ' punto(s) intermedio(s)') }}
+          </div>
+          <div class="cell-sub">
+            Longitud estimada: <b class="mono">{{ formatDistance(draftDistanceMeters()) }}</b>
+          </div>
+        </div>
+        @if (leafletReady()) {
+          <button type="button" class="btn btn-outline btn-sm" (click)="startTraceOnMap()">
+            <i class="fas fa-draw-polygon"></i> Trazar en el mapa
+          </button>
+        }
+      </div>
+
+      <p class="hint">
+        Puedes guardar una conexion directa entre los dos nodos o pulsar <b>Trazar en el mapa</b> para seguir el recorrido exacto por calles y postes.
+      </p>
+    </form>
+
+    <ng-container modalFooter>
+      <button type="button" class="btn btn-outline" (click)="close()">Cancelar</button>
+      <button appRipple type="submit" form="fiber-link-form" class="btn btn-grad" [disabled]="saving()">
+        @if (saving()) {
+          <i class="fas fa-circle-notch" style="animation: spinSlow 1s linear infinite"></i>
+          Guardando…
+        } @else {
+          <i class="fas fa-check"></i> {{ editingLink() ? 'Guardar cambios' : 'Guardar trazado' }}
+        }
+      </button>
+    </ng-container>
+  </app-modal>
+}
+
+<!-- Modal control de puertos NAP -->
 @if (managingNap(); as nap) {
   <app-modal [title]="'Control de puertos — ' + nap.name" wide (close)="close()">
     <div
@@ -603,6 +938,7 @@
   </app-modal>
 }
 
+<!-- Modal eliminar nodo -->
 @if (deleting(); as target) {
   <app-modal title="Eliminar nodo de cobertura" (close)="close()">
     <div class="alert alert-danger">
@@ -612,7 +948,7 @@
         @if (target.type === 'NAP' && target.usedPorts > 0) {
           Tambien se liberaran sus <b>{{ target.usedPorts }}</b> puerto(s) asignado(s).
         }
-        Esta accion no se puede deshacer.
+        Tambien se eliminaran los trazados de fibra conectados a este nodo.
       </span>
     </div>
 
@@ -624,6 +960,32 @@
           Eliminando…
         } @else {
           <i class="fas fa-trash"></i> Eliminar nodo
+        }
+      </button>
+    </ng-container>
+  </app-modal>
+}
+
+<!-- Modal eliminar trazado de fibra -->
+@if (deletingLink(); as target) {
+  <app-modal title="Eliminar trazado de fibra optica" (close)="close()">
+    <div class="alert alert-danger">
+      <i class="fas fa-triangle-exclamation"></i>
+      <span>
+        Vas a eliminar la conexion de fibra
+        <b>{{ target.name || (nodeName(target.fromNodeId) + ' → ' + nodeName(target.toNodeId)) }}</b>.
+        Esta accion no se puede deshacer.
+      </span>
+    </div>
+
+    <ng-container modalFooter>
+      <button type="button" class="btn btn-outline" (click)="close()">Cancelar</button>
+      <button appRipple type="button" class="btn btn-danger" [disabled]="saving()" (click)="removeLink()">
+        @if (saving()) {
+          <i class="fas fa-circle-notch" style="animation: spinSlow 1s linear infinite"></i>
+          Eliminando…
+        } @else {
+          <i class="fas fa-trash"></i> Eliminar trazado
         }
       </button>
     </ng-container>
