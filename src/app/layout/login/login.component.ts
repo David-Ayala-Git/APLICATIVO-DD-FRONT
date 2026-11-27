@@ -1,4 +1,4 @@
-import { Component, inject, signal } from '@angular/core';
+import { Component, DestroyRef, inject, signal } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
 
@@ -8,9 +8,9 @@ import { RippleDirective } from '../../shared/directives/ripple.directive';
 import { FiberCanvasComponent } from './fiber-canvas.component';
 
 /**
- * Ingreso a la consola. El proveedor (tenant) no se elige aqui: viene en el
- * claim del JWT que emite dd_ms_auth a partir del usuario, y el gateway lo
- * reescribe en cada peticion. Un correo pertenece a un solo ISP.
+ * Ingreso a la consola. Al autenticarse con exito reproduce la animacion de
+ * bienvenida donde las dos "D" del logo se unen en el emblema D&D antes de
+ * entrar al tablero principal.
  */
 @Component({
   selector: 'app-login',
@@ -22,8 +22,13 @@ export class LoginComponent {
   private readonly router = inject(Router);
   private readonly route = inject(ActivatedRoute);
   private readonly fb = inject(FormBuilder);
+  private readonly destroyRef = inject(DestroyRef);
+
+  private navTimer: ReturnType<typeof setTimeout> | null = null;
 
   protected readonly submitting = signal(false);
+  protected readonly welcomeAnimating = signal(false);
+  protected readonly welcomeName = signal('');
   protected readonly error = signal<string | null>(null);
   protected readonly showPassword = signal(false);
 
@@ -43,6 +48,14 @@ export class LoginComponent {
     { icon: 'fas fa-diagram-project', text: 'Automatizacion n8n' },
   ];
 
+  constructor() {
+    this.destroyRef.onDestroy(() => {
+      if (this.navTimer !== null) {
+        clearTimeout(this.navTimer);
+      }
+    });
+  }
+
   protected togglePassword(): void {
     this.showPassword.update((v) => !v);
   }
@@ -57,9 +70,19 @@ export class LoginComponent {
     this.error.set(null);
 
     this.auth.login(this.form.getRawValue()).subscribe({
-      next: () => {
-        const redirectTo = this.route.snapshot.queryParamMap.get('redirectTo');
-        void this.router.navigateByUrl(redirectTo ?? '/app/dashboard');
+      next: (res) => {
+        const redirectTo = this.route.snapshot.queryParamMap.get('redirectTo') ?? '/app/dashboard';
+        this.welcomeName.set(res.user?.fullName ?? '');
+        this.welcomeAnimating.set(true);
+
+        const reduceMotion =
+          typeof window !== 'undefined' &&
+          window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+        const durationMs = reduceMotion ? 350 : 1900;
+
+        this.navTimer = setTimeout(() => {
+          void this.router.navigateByUrl(redirectTo);
+        }, durationMs);
       },
       error: (err: unknown) => {
         this.submitting.set(false);

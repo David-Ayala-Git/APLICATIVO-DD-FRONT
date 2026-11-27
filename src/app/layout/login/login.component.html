@@ -4,7 +4,12 @@
     <div class="auth-scrim" aria-hidden="true"></div>
 
     <div class="auth-brand-row">
-      <img src="logo-mark.png" alt="D&D Conexiones" class="auth-logo-mark" />
+      <div class="dd-logo-anim dd-logo-anim-sm" aria-label="D&D Conexiones">
+        <img src="logo-d-green.png" alt="" class="dd-piece dd-piece-green" aria-hidden="true" />
+        <img src="logo-d-blue.png" alt="" class="dd-piece dd-piece-blue" aria-hidden="true" />
+        <img src="logo-mark.png" alt="D&D Conexiones" class="dd-piece dd-piece-final" />
+        <span class="dd-join-ring" aria-hidden="true"></span>
+      </div>
       <img src="logo-text.png" alt="D&D Conexiones SAS · Conectando Suenos" class="auth-logo-text" />
     </div>
 
@@ -99,3 +104,32 @@
     </form>
   </div>
 </div>
+
+@if (welcomeAnimating()) {
+  <div class="login-splash" role="status" aria-live="polite">
+    <div class="login-splash-glow" aria-hidden="true"></div>
+    <div class="login-splash-content">
+      <div class="dd-logo-anim dd-logo-anim-lg">
+        <span class="dd-join-ring" aria-hidden="true"></span>
+        <span class="dd-join-ring dd-join-ring-2" aria-hidden="true"></span>
+        <img src="logo-d-green.png" alt="" class="dd-piece dd-piece-green" aria-hidden="true" />
+        <img src="logo-d-blue.png" alt="" class="dd-piece dd-piece-blue" aria-hidden="true" />
+        <img src="logo-mark.png" alt="D&D Conexiones" class="dd-piece dd-piece-final" />
+      </div>
+
+      <img
+        src="logo-text.png"
+        alt="D&D Conexiones SAS · Conectando Suenos"
+        class="login-splash-wordmark"
+      />
+
+      <p class="login-splash-msg">
+        @if (welcomeName()) {
+          Bienvenido, <b>{{ welcomeName() }}</b> · Conectando a tu consola…
+        } @else {
+          Conectando a tu consola…
+        }
+      </p>
+    </div>
+  </div>
+}

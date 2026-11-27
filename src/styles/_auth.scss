@@ -367,3 +367,213 @@ app-fiber-canvas {
     padding: 1.4rem 1rem 2rem;
   }
 }
+
+/* ============ ANIMACION LOGO D&D UNIENDOSE ============ */
+.dd-logo-anim {
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+  flex-shrink: 0;
+  overflow: visible;
+}
+.dd-logo-anim-sm {
+  width: clamp(48px, 5vw, 60px);
+  height: clamp(48px, 5vw, 60px);
+  --dd-offset-x: 24px;
+  --dd-offset-y: 15px;
+}
+.dd-logo-anim-lg {
+  width: clamp(136px, 24vw, 176px);
+  height: clamp(136px, 24vw, 176px);
+  --dd-offset-x: 78px;
+  --dd-offset-y: 48px;
+}
+.dd-piece {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  pointer-events: none;
+  will-change: transform, opacity;
+}
+.dd-piece-green {
+  z-index: 2;
+  filter: drop-shadow(0 8px 18px rgba(168, 240, 40, 0.35));
+  animation: ddJoinGreen 1.2s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+.dd-piece-blue {
+  z-index: 2;
+  filter: drop-shadow(0 8px 18px rgba(34, 184, 247, 0.38));
+  animation: ddJoinBlue 1.2s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+.dd-piece-final {
+  z-index: 3;
+  opacity: 0;
+  filter: drop-shadow(0 12px 28px rgba(34, 184, 247, 0.42));
+  animation: ddRevealFinal 1.35s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+.dd-join-ring {
+  position: absolute;
+  inset: 8%;
+  border-radius: 50%;
+  border: 2.5px solid rgba(34, 211, 238, 0.75);
+  box-shadow: 0 0 24px rgba(168, 240, 40, 0.45);
+  opacity: 0;
+  z-index: 1;
+  pointer-events: none;
+  animation: ddJoinPulse 1.5s 0.68s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+.dd-join-ring-2 {
+  border-color: rgba(168, 240, 40, 0.65);
+  animation-delay: 0.8s;
+}
+
+@keyframes ddJoinGreen {
+  0% {
+    opacity: 0;
+    transform: translate(calc(var(--dd-offset-x) * -1), calc(var(--dd-offset-y) * -1)) scale(0.8) rotate(-14deg);
+  }
+  20% {
+    opacity: 1;
+  }
+  62% {
+    opacity: 1;
+    transform: translate(2px, 1px) scale(1.03) rotate(1deg);
+  }
+  74% {
+    opacity: 1;
+    transform: translate(0, 0) scale(1) rotate(0deg);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(0, 0) scale(1) rotate(0deg);
+  }
+}
+@keyframes ddJoinBlue {
+  0% {
+    opacity: 0;
+    transform: translate(var(--dd-offset-x), var(--dd-offset-y)) scale(0.8) rotate(14deg);
+  }
+  20% {
+    opacity: 1;
+  }
+  62% {
+    opacity: 1;
+    transform: translate(-2px, -1px) scale(1.03) rotate(-1deg);
+  }
+  74% {
+    opacity: 1;
+    transform: translate(0, 0) scale(1) rotate(0deg);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(0, 0) scale(1) rotate(0deg);
+  }
+}
+@keyframes ddRevealFinal {
+  0%,
+  58% {
+    opacity: 0;
+    transform: scale(0.98);
+  }
+  72% {
+    opacity: 1;
+    transform: scale(1.06);
+  }
+  86% {
+    opacity: 1;
+    transform: scale(0.99);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+@keyframes ddJoinPulse {
+  0% {
+    opacity: 0.9;
+    transform: scale(0.75);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.85);
+  }
+}
+
+/* ============ SPLASH DE BIENVENIDA AL INICIAR SESION ============ */
+.login-splash {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: grid;
+  place-items: center;
+  padding: 1.5rem;
+  background: radial-gradient(circle at 50% 42%, #131c3d 0%, #090e22 62%, #050814 100%);
+  animation: fade 0.28s ease both;
+}
+.login-splash-glow {
+  position: absolute;
+  width: min(460px, 90vw);
+  height: min(460px, 90vw);
+  border-radius: 50%;
+  background:
+    radial-gradient(circle at 38% 40%, rgba(168, 240, 40, 0.2), transparent 58%),
+    radial-gradient(circle at 64% 60%, rgba(34, 184, 247, 0.24), transparent 58%);
+  filter: blur(42px);
+  pointer-events: none;
+}
+.login-splash-content {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 1.15rem;
+}
+.login-splash-wordmark {
+  display: block;
+  width: min(320px, 80vw);
+  height: auto;
+  object-fit: contain;
+  opacity: 0;
+  filter: drop-shadow(0 6px 18px rgba(0, 0, 0, 0.45));
+  animation: ddSplashText 0.65s 0.72s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+.login-splash-msg {
+  margin: 0;
+  font-size: 0.9rem;
+  color: rgba(226, 232, 240, 0.84);
+  opacity: 0;
+  animation: ddSplashText 0.55s 0.95s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+.login-splash-msg b {
+  color: #a8f028;
+}
+@keyframes ddSplashText {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+    filter: blur(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+    filter: blur(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dd-piece-green,
+  .dd-piece-blue,
+  .dd-join-ring {
+    display: none;
+  }
+  .dd-piece-final,
+  .login-splash-wordmark,
+  .login-splash-msg {
+    opacity: 1;
+    animation: none;
+  }
+}
