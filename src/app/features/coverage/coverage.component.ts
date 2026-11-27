@@ -84,21 +84,33 @@ interface LeafletLayerGroup {
   clearLayers(): this;
   addTo(map: LeafletMap): this;
 }
+interface LeafletLatLng {
+  lat: number;
+  lng: number;
+}
 interface LeafletInteractiveLayer {
   bindPopup(html: string): this;
   addTo(target: LeafletLayerGroup | LeafletMap): this;
+  on(event: string, handler: (e: { latlng?: LeafletLatLng; target: LeafletDraggableMarker }) => void): this;
+}
+interface LeafletDraggableMarker extends LeafletInteractiveLayer {
+  getLatLng(): LeafletLatLng;
+}
+interface LeafletPolyline extends LeafletInteractiveLayer {
+  setLatLngs(latlngs: [number, number][]): this;
 }
 interface LeafletStatic {
   map(el: HTMLElement, opts?: Record<string, unknown>): LeafletMap;
   tileLayer(url: string, opts?: Record<string, unknown>): LeafletTileLayer;
   layerGroup(): LeafletLayerGroup;
   divIcon(opts: Record<string, unknown>): unknown;
-  marker(latlng: [number, number], opts?: Record<string, unknown>): LeafletInteractiveLayer;
-  polyline(latlngs: [number, number][], opts?: Record<string, unknown>): LeafletInteractiveLayer;
+  marker(latlng: [number, number], opts?: Record<string, unknown>): LeafletDraggableMarker;
+  polyline(latlngs: [number, number][], opts?: Record<string, unknown>): LeafletPolyline;
   circleMarker(latlng: [number, number], opts?: Record<string, unknown>): LeafletInteractiveLayer;
+  DomEvent?: { stopPropagation(e: unknown): void; preventDefault(e: unknown): void };
 }
 
-type MapStyleId = 'relief' | 'topo' | 'streets' | 'satellite' | 'dark';
+type MapStyleId = 'satellite' | 'relief' | 'topo' | 'streets' | 'dark';
 
 interface MapTileSpec {
   url: string;
@@ -116,6 +128,26 @@ interface MapStyleOption {
 }
 
 const MAP_STYLES: MapStyleOption[] = [
+  {
+    id: 'satellite',
+    label: 'Satelite',
+    icon: 'fas fa-satellite',
+    layers: [
+      {
+        url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+        maxZoom: 20,
+        maxNativeZoom: 18,
+        attribution: 'Tiles &copy; Esri &mdash; World Imagery',
+      },
+      {
+        url: 'https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}',
+        maxZoom: 20,
+        maxNativeZoom: 18,
+        attribution: '&copy; Esri',
+        opacity: 0.95,
+      },
+    ],
+  },
   {
     id: 'relief',
     label: 'Relieve 3D',
@@ -157,24 +189,6 @@ const MAP_STYLES: MapStyleOption[] = [
         url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
         maxZoom: 19,
         attribution: '&copy; OpenStreetMap contributors',
-      },
-    ],
-  },
-  {
-    id: 'satellite',
-    label: 'Satelite',
-    icon: 'fas fa-satellite',
-    layers: [
-      {
-        url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
-        maxZoom: 19,
-        attribution: 'Tiles &copy; Esri &mdash; World Imagery',
-      },
-      {
-        url: 'https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}',
-        maxZoom: 19,
-        attribution: '&copy; Esri',
-        opacity: 0.95,
       },
     ],
   },
@@ -236,7 +250,7 @@ export class CoverageComponent {
   private activeTileLayers: LeafletTileLayer[] = [];
 
   protected readonly mapStyles = MAP_STYLES;
-  protected readonly mapStyle = signal<MapStyleId>('relief');
+  protected readonly mapStyle = signal<MapStyleId>('satellite');
 
   protected readonly nodes = collection(() => this.api.nodes(), [] as NetworkNode[]);
   protected readonly fiberLinks = collection(
@@ -507,11 +521,12 @@ export class CoverageComponent {
       const list = this.filtered();
       const links = this.fiberLinks.value();
       const mapById = this.nodesById();
+      const activeEditLinkId = this.tracingFiber() ? this.editingLink()?.id ?? null : null;
       if (!host) {
         return;
       }
       this.ensureMap(host);
-      this.renderFiberLinks(links, mapById);
+      this.renderFiberLinks(links, mapById, activeEditLinkId);
       this.renderMarkers(list);
     });
 
@@ -750,6 +765,33 @@ export class CoverageComponent {
     this.linkModalOpen.set(true);
   }
 
+  /**
+   * Entra directamente al modo interactivo de ajuste de trayectoria sobre el mapa
+   * para un trazado de fibra ya existente (arrastrar vertices, agregar curvas en '+' y guardar).
+   */
+  protected startAdjustExistingLink(link: FiberLink): void {
+    this.editingLink.set(link);
+    this.draftFromNodeId.set(link.fromNodeId);
+    this.draftToNodeId.set(link.toNodeId);
+    this.draftFiberColor.set(link.color);
+    this.draftWaypoints.set([...(link.waypoints ?? [])]);
+    this.linkForm.reset({
+      name: link.name ?? '',
+      fromNodeId: link.fromNodeId,
+      toNodeId: link.toNodeId,
+      fiberType: link.fiberType,
+      color: link.color,
+    });
+    this.linkModalOpen.set(false);
+    this.tracingFiber.set(true);
+
+    const coords = this.linkCoords(link);
+    if (this.map && coords.length >= 2) {
+      this.map.fitBounds(coords, { padding: [55, 55], maxZoom: 18 });
+    }
+    this.mapHost()?.nativeElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
+
   protected startTraceOnMap(): void {
     const raw = this.linkForm.getRawValue();
     if (!raw.fromNodeId || !raw.toNodeId || raw.fromNodeId === raw.toNodeId) {
@@ -764,7 +806,7 @@ export class CoverageComponent {
 
     const coords = this.draftPolylineCoords();
     if (this.map && coords.length >= 2) {
-      this.map.fitBounds(coords, { padding: [55, 55], maxZoom: 17 });
+      this.map.fitBounds(coords, { padding: [55, 55], maxZoom: 18 });
     }
   }
 
@@ -776,13 +818,18 @@ export class CoverageComponent {
     this.draftWaypoints.set([]);
   }
 
-  protected finishTraceAndOpenModal(): void {
+  protected finishTraceAndSave(): void {
+    if (this.editingLink()) {
+      this.saveLink();
+      return;
+    }
     this.tracingFiber.set(false);
     this.linkModalOpen.set(true);
   }
 
   protected cancelTrace(): void {
     this.tracingFiber.set(false);
+    this.editingLink.set(null);
     this.draftWaypoints.set([]);
   }
 
@@ -1087,7 +1134,11 @@ export class CoverageComponent {
     }
   }
 
-  private renderFiberLinks(links: FiberLink[], nodesMap: Map<string, NetworkNode>): void {
+  private renderFiberLinks(
+    links: FiberLink[],
+    nodesMap: Map<string, NetworkNode>,
+    excludeLinkId: string | null = null,
+  ): void {
     const L = this.leaflet();
     if (!L || !this.map || !this.fiberLayer) {
       return;
@@ -1095,6 +1146,9 @@ export class CoverageComponent {
     this.fiberLayer.clearLayers();
 
     for (const link of links) {
+      if (excludeLinkId && link.id === excludeLinkId) {
+        continue;
+      }
       const from = nodesMap.get(link.fromNodeId);
       const to = nodesMap.get(link.toNodeId);
       if (!from || !to) {
@@ -1110,7 +1164,7 @@ export class CoverageComponent {
       const distText = this.formatDistance(polylineDistanceMeters(coords));
       const title = escapeHtml(link.name || `${from.name} → ${to.name}`);
 
-      // Contorno sutil para contraste sobre relieve o satelite
+      // Contorno sutil para contraste sobre satelite o relieve
       L.polyline(coords, {
         color: '#ffffff',
         weight: meta.weight + 3,
@@ -1129,11 +1183,14 @@ export class CoverageComponent {
         ...(meta.dashArray ? { dashArray: meta.dashArray } : {}),
       })
         .bindPopup(
-          `<div style="min-width:180px;font-family:inherit">
+          `<div style="min-width:190px;font-family:inherit">
             <strong style="font-size:13px">${title}</strong><br/>
             <span style="font-size:11px;color:#475569">${escapeHtml(from.name)} &rarr; ${escapeHtml(to.name)}</span>
             <div style="margin-top:4px;font-size:11px;font-weight:700;color:${escapeHtml(color)}">
               ${escapeHtml(meta.text)} · ${escapeHtml(distText)}
+            </div>
+            <div style="margin-top:4px;font-size:10px;color:#64748b">
+              Usa "Ajustar ruta" en la tabla para mover o curvar este trazado.
             </div>
           </div>`,
         )
@@ -1161,27 +1218,133 @@ export class CoverageComponent {
     if (!from || !to) {
       return;
     }
-    const coords: [number, number][] = [
+
+    const buildCoords = (pts: FiberPoint[]): [number, number][] => [
       [from.latitude, from.longitude],
-      ...waypoints.map((p) => [p.lat, p.lon] as [number, number]),
+      ...pts.map((p) => [p.lat, p.lon] as [number, number]),
       [to.latitude, to.longitude],
     ];
-    L.polyline(coords, {
-      color,
-      weight: 4,
-      opacity: 0.95,
-      dashArray: '10 6',
+
+    const coords = buildCoords(waypoints);
+
+    // Contorno blanco + linea editable en vivo
+    const casingLine = L.polyline(coords, {
+      color: '#ffffff',
+      weight: 7,
+      opacity: 0.85,
+      lineCap: 'round',
+      lineJoin: 'round',
     }).addTo(this.draftFiberLayer);
 
-    for (const pt of waypoints) {
-      L.circleMarker([pt.lat, pt.lon], {
-        radius: 5,
-        color: '#ffffff',
-        weight: 2,
-        fillColor: color,
-        fillOpacity: 1,
-      }).addTo(this.draftFiberLayer);
+    const previewLine = L.polyline(coords, {
+      color,
+      weight: 4,
+      opacity: 1,
+      dashArray: '10 6',
+      lineCap: 'round',
+      lineJoin: 'round',
+    }).addTo(this.draftFiberLayer);
+
+    // 1. Puntos '+' intermedios en la mitad de cada segmento: clic o arrastrar agrega una curva/poste
+    for (let seg = 0; seg < coords.length - 1; seg++) {
+      const [lat1, lon1] = coords[seg];
+      const [lat2, lon2] = coords[seg + 1];
+      const midLat = Number(((lat1 + lat2) / 2).toFixed(6));
+      const midLon = Number(((lon1 + lon2) / 2).toFixed(6));
+      const insertIndex = seg;
+
+      const plusIcon = L.divIcon({
+        html: `<div style="
+          width:18px;height:18px;border-radius:50%;
+          background:rgba(255,255,255,0.92);color:${escapeHtml(color)};
+          border:2px solid ${escapeHtml(color)};
+          display:grid;place-items:center;
+          font-size:12px;font-weight:800;line-height:1;
+          box-shadow:0 2px 8px rgba(0,0,0,.35);cursor:grab;"
+          title="Arrastra o haz clic para agregar un punto y curvar la fibra">+</div>`,
+        className: 'fiber-midpoint-handle',
+        iconSize: [18, 18],
+        iconAnchor: [9, 9],
+      });
+
+      const midMarker = L.marker([midLat, midLon], { icon: plusIcon, draggable: true }).addTo(
+        this.draftFiberLayer,
+      );
+
+      let dragged = false;
+      midMarker.on('drag', (e) => {
+        dragged = true;
+        const pos = e.target.getLatLng();
+        const nextPts = [...waypoints];
+        nextPts.splice(insertIndex, 0, { lat: pos.lat, lon: pos.lng });
+        const nextCoords = buildCoords(nextPts);
+        casingLine.setLatLngs(nextCoords);
+        previewLine.setLatLngs(nextCoords);
+      });
+      midMarker.on('dragend', (e) => {
+        const pos = e.target.getLatLng();
+        const pt = { lat: Number(pos.lat.toFixed(6)), lon: Number(pos.lng.toFixed(6)) };
+        this.draftWaypoints.update((pts) => {
+          const next = [...pts];
+          next.splice(insertIndex, 0, pt);
+          return next;
+        });
+      });
+      midMarker.on('click', (e) => {
+        L.DomEvent?.stopPropagation(e);
+        if (dragged) {
+          dragged = false;
+          return;
+        }
+        this.draftWaypoints.update((pts) => {
+          const next = [...pts];
+          next.splice(insertIndex, 0, { lat: midLat, lon: midLon });
+          return next;
+        });
+      });
     }
+
+    // 2. Vertices existentes arrastrables (arrastrar para mover, clic derecho o doble clic para eliminar)
+    waypoints.forEach((pt, idx) => {
+      const vertexIcon = L.divIcon({
+        html: `<div style="
+          width:16px;height:16px;border-radius:50%;
+          background:${escapeHtml(color)};
+          border:3px solid #ffffff;
+          box-shadow:0 2px 10px rgba(0,0,0,.45);cursor:move;"
+          title="Arrastra para mover este punto · Clic derecho o doble clic para quitarlo"></div>`,
+        className: 'fiber-vertex-handle',
+        iconSize: [16, 16],
+        iconAnchor: [8, 8],
+      });
+
+      const vertexMarker = L.marker([pt.lat, pt.lon], { icon: vertexIcon, draggable: true }).addTo(
+        this.draftFiberLayer!,
+      );
+
+      vertexMarker.on('drag', (e) => {
+        const pos = e.target.getLatLng();
+        const nextPts = waypoints.map((w, i) => (i === idx ? { lat: pos.lat, lon: pos.lng } : w));
+        const nextCoords = buildCoords(nextPts);
+        casingLine.setLatLngs(nextCoords);
+        previewLine.setLatLngs(nextCoords);
+      });
+      vertexMarker.on('dragend', (e) => {
+        const pos = e.target.getLatLng();
+        const updatedPt = { lat: Number(pos.lat.toFixed(6)), lon: Number(pos.lng.toFixed(6)) };
+        this.draftWaypoints.update((pts) => pts.map((w, i) => (i === idx ? updatedPt : w)));
+      });
+      vertexMarker.on('contextmenu', (e) => {
+        L.DomEvent?.stopPropagation(e);
+        L.DomEvent?.preventDefault(e);
+        this.draftWaypoints.update((pts) => pts.filter((_, i) => i !== idx));
+      });
+      vertexMarker.on('dblclick', (e) => {
+        L.DomEvent?.stopPropagation(e);
+        L.DomEvent?.preventDefault(e);
+        this.draftWaypoints.update((pts) => pts.filter((_, i) => i !== idx));
+      });
+    });
   }
 
   private renderMarkers(list: NetworkNode[]): void {

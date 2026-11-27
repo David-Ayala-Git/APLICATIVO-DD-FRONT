@@ -1,7 +1,7 @@
 <div class="page">
   <app-page-head
     title="Cobertura y mapas"
-    subtitle="Mapa en relieve de Providencia, Narino · control de cajas NAP (1x8 / 1x16) y trazados de fibra optica"
+    subtitle="Mapa satelital de Providencia, Narino · control de cajas NAP (1x8 / 1x16) y trazados ajustables de fibra optica"
   >
     <button
       appRipple
@@ -34,9 +34,9 @@
           <h3>Mapa de cobertura</h3>
           <div class="sub">
             @if (tracingFiber()) {
-              <b style="color: var(--brand-1)">Modo trazado de fibra:</b>
-              haz clic sobre el mapa para agregar postes o esquinas intermedias
-              ({{ draftWaypoints().length }} punto(s) · {{ formatDistance(draftDistanceMeters()) }})
+              <b style="color: var(--brand-1)">Ajustando trayectoria de fibra:</b>
+              arrastra los puntos <b>+</b> para curvar el trazado por calles/postes, mueve los vertices o haz clic derecho sobre un punto para quitarlo
+              ({{ draftWaypoints().length }} vertice(s) · {{ formatDistance(draftDistanceMeters()) }})
             } @else if (pickedCoords(); as coords) {
               Punto seleccionado: <span class="mono">{{ coords.lat }}, {{ coords.lon }}</span>
               <button
@@ -99,9 +99,10 @@
             <div class="row-wrap" style="gap: 0.5rem; font-size: 0.8rem">
               <i class="fas fa-bezier-curve" style="color: var(--brand-1)"></i>
               <span>
-                Trazando <b>{{ nodeName(draftFromNodeId()) }}</b> &rarr;
+                Ajustando <b>{{ nodeName(draftFromNodeId()) }}</b> &rarr;
                 <b>{{ nodeName(draftToNodeId()) }}</b>
-                · <b>{{ draftWaypoints().length }}</b> punto(s) intermedio(s)
+                · <b>{{ draftWaypoints().length }}</b> vertice(s) ·
+                <b class="mono">{{ formatDistance(draftDistanceMeters()) }}</b>
               </span>
             </div>
             <div class="row-wrap" style="gap: 0.35rem">
@@ -111,15 +112,16 @@
                 [disabled]="draftWaypoints().length === 0"
                 (click)="undoDraftWaypoint()"
               >
-                <i class="fas fa-rotate-left"></i> Deshacer punto
+                <i class="fas fa-rotate-left"></i> Deshacer
               </button>
               <button
                 type="button"
                 class="btn btn-outline btn-sm"
                 [disabled]="draftWaypoints().length === 0"
+                title="Volver a linea recta entre los dos nodos"
                 (click)="clearDraftWaypoints()"
               >
-                Limpiar
+                Linea recta
               </button>
               <button type="button" class="btn btn-ghost btn-sm" (click)="cancelTrace()">
                 Cancelar
@@ -128,9 +130,16 @@
                 appRipple
                 type="button"
                 class="btn btn-grad btn-sm"
-                (click)="finishTraceAndOpenModal()"
+                [disabled]="saving()"
+                (click)="finishTraceAndSave()"
               >
-                <i class="fas fa-check"></i> Listo, guardar fibra
+                @if (saving()) {
+                  <i class="fas fa-circle-notch" style="animation: spinSlow 1s linear infinite"></i>
+                  Guardando…
+                } @else {
+                  <i class="fas fa-check"></i>
+                  {{ editingLink() ? 'Guardar ruta' : 'Listo, continuar' }}
+                }
               </button>
             </div>
           </div>
@@ -358,6 +367,14 @@
                   @if (leafletReady()) {
                     <button
                       type="button"
+                      class="btn btn-accent btn-sm"
+                      title="Mover, curvar y organizar la trayectoria de esta fibra directamente en el mapa"
+                      (click)="startAdjustExistingLink(link)"
+                    >
+                      <i class="fas fa-bezier-curve"></i> Ajustar ruta
+                    </button>
+                    <button
+                      type="button"
                       class="btn btn-ghost btn-icon"
                       title="Ver trazado en el mapa"
                       (click)="focusLink(link)"
@@ -368,7 +385,7 @@
                   <button
                     type="button"
                     class="btn btn-ghost btn-icon"
-                    title="Editar trazado"
+                    title="Editar datos del trazado"
                     (click)="openEditLink(link)"
                   >
                     <i class="fas fa-pen"></i>
