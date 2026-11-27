@@ -29,6 +29,7 @@ export class LoginComponent {
   protected readonly submitting = signal(false);
   protected readonly welcomeAnimating = signal(false);
   protected readonly welcomeName = signal('');
+  protected readonly mobileStep = signal<'welcome' | 'form'>('welcome');
   protected readonly error = signal<string | null>(null);
   protected readonly showPassword = signal(false);
 
@@ -58,6 +59,20 @@ export class LoginComponent {
 
   protected togglePassword(): void {
     this.showPassword.update((v) => !v);
+  }
+
+  protected goToForm(): void {
+    this.mobileStep.set('form');
+    if (typeof window !== 'undefined') {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  }
+
+  protected goToWelcome(): void {
+    this.mobileStep.set('welcome');
+    if (typeof window !== 'undefined') {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
   }
 
   protected submit(): void {

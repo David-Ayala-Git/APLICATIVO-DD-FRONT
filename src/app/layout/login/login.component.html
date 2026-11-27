@@ -1,4 +1,4 @@
-<div class="auth-screen">
+<div class="auth-screen" [class.mobile-step-form]="mobileStep() === 'form'">
   <div class="auth-left">
     <app-fiber-canvas />
     <div class="auth-scrim" aria-hidden="true"></div>
@@ -27,10 +27,28 @@
         <div><i class="{{ mod.icon }}"></i> {{ mod.text }}</div>
       }
     </div>
+
+    <div class="auth-mobile-cta">
+      <button
+        appRipple
+        type="button"
+        class="btn btn-grad btn-block auth-mobile-start-btn"
+        (click)="goToForm()"
+      >
+        <i class="fas fa-right-to-bracket"></i> Iniciar sesion
+      </button>
+    </div>
   </div>
 
   <div class="auth-right">
     <form class="auth-box" [formGroup]="form" (ngSubmit)="submit()">
+      <div class="auth-mobile-header">
+        <button type="button" class="auth-mobile-back" (click)="goToWelcome()">
+          <i class="fas fa-arrow-left"></i> Volver
+        </button>
+        <img src="logo-mark.png" alt="D&D Conexiones" class="auth-mobile-mini-logo" />
+      </div>
+
       <h2>Bienvenido de nuevo</h2>
       <p class="sub">Ingresa a tu consola de operaciones</p>
 

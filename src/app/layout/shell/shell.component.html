@@ -126,3 +126,32 @@
     </div>
   }
 </div>
+
+@if (loggingOut()) {
+  <div class="login-splash" role="status" aria-live="polite">
+    <div class="login-splash-glow" aria-hidden="true"></div>
+    <div class="login-splash-content">
+      <div class="dd-logo-anim dd-logo-anim-lg">
+        <span class="dd-join-ring" aria-hidden="true"></span>
+        <span class="dd-join-ring dd-join-ring-2" aria-hidden="true"></span>
+        <img src="logo-d-green.png" alt="" class="dd-piece dd-piece-green" aria-hidden="true" />
+        <img src="logo-d-blue.png" alt="" class="dd-piece dd-piece-blue" aria-hidden="true" />
+        <img src="logo-mark.png" alt="D&D Conexiones" class="dd-piece dd-piece-final" />
+      </div>
+
+      <img
+        src="logo-text.png"
+        alt="D&D Conexiones SAS · Conectando Suenos"
+        class="login-splash-wordmark"
+      />
+
+      <p class="login-splash-msg">
+        @if (logoutName()) {
+          Hasta pronto, <b>{{ logoutName() }}</b> · Cerrando sesion…
+        } @else {
+          Cerrando sesion…
+        }
+      </p>
+    </div>
+  </div>
+}

@@ -64,7 +64,11 @@ export class ShellComponent implements OnInit {
   protected readonly mobileOpen = signal(false);
   protected readonly scrolled = signal(false);
   protected readonly scrollProgress = signal(0);
+  protected readonly loggingOut = signal(false);
+  protected readonly logoutName = signal('');
   protected readonly tenant = this.tenantService.tenant;
+
+  private logoutTimer: ReturnType<typeof setTimeout> | null = null;
 
   protected readonly title = signal('Dashboard gerencial');
   protected readonly subtitle = signal('Resumen operativo del proveedor');
@@ -91,6 +95,9 @@ export class ShellComponent implements OnInit {
     });
     this.destroyRef.onDestroy(() => {
       document.body.classList.remove('sidebar-open');
+      if (this.logoutTimer !== null) {
+        clearTimeout(this.logoutTimer);
+      }
     });
   }
 
@@ -143,7 +150,21 @@ export class ShellComponent implements OnInit {
   }
 
   protected logout(): void {
-    this.auth.logout();
+    if (this.loggingOut()) {
+      return;
+    }
+    this.mobileOpen.set(false);
+    this.logoutName.set(this.auth.user()?.fullName ?? '');
+    this.loggingOut.set(true);
+
+    const reduceMotion =
+      typeof window !== 'undefined' &&
+      window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    const durationMs = reduceMotion ? 350 : 1900;
+
+    this.logoutTimer = setTimeout(() => {
+      this.auth.logout();
+    }, durationMs);
   }
 
   protected toTop(): void {
