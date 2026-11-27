@@ -1222,6 +1222,30 @@ export class CoverageComponent {
     host.addEventListener('click', onHostClick);
     this.destroyRef.onDestroy(() => host.removeEventListener('click', onHostClick));
 
+    let rafId: number | null = null;
+    const scheduleResize = () => {
+      if (rafId !== null) {
+        cancelAnimationFrame(rafId);
+      }
+      rafId = requestAnimationFrame(() => {
+        rafId = null;
+        this.map?.invalidateSize();
+      });
+    };
+
+    if (typeof ResizeObserver !== 'undefined') {
+      const ro = new ResizeObserver(() => scheduleResize());
+      ro.observe(host);
+      this.destroyRef.onDestroy(() => ro.disconnect());
+    }
+    window.addEventListener('resize', scheduleResize);
+    this.destroyRef.onDestroy(() => {
+      window.removeEventListener('resize', scheduleResize);
+      if (rafId !== null) {
+        cancelAnimationFrame(rafId);
+      }
+    });
+
     setTimeout(() => this.map?.invalidateSize(), 150);
   }
 

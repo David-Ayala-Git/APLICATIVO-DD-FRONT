@@ -80,7 +80,7 @@
               </div>
             </form>
             @if (canManageRoles()) {
-              <div class="row" style="gap: 0.5rem; margin-bottom: 1rem">
+              <div class="row-wrap" style="gap: 0.5rem; margin-bottom: 1rem">
                 <button appRipple type="button" class="btn btn-grad btn-sm" [disabled]="saving() || !brandChanged()" (click)="saveBranding()">
                   <i class="fas fa-palette"></i> Guardar colores
                 </button>
@@ -272,7 +272,7 @@
               @for (item of baseRoleSummaries(); track item.value) {
                 <div class="role-guide-card" [class.is-disabled]="!item.enabled">
                   <div class="role-guide-head">
-                    <div class="row" style="gap: 0.4rem">
+                    <div class="row-wrap" style="gap: 0.4rem">
                       <app-status-badge [label]="roleLabel(item.value)" />
                       @if (item.value === 'SUPER_ADMIN') {
                         <span class="badge badge-gray">Protegido</span>

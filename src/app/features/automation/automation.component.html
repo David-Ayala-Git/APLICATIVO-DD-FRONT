@@ -27,13 +27,13 @@
   @for (recipe of recipes; track recipe.title) {
     <div class="card" style="margin-bottom: 1rem">
       <div class="card-header">
-        <div class="row">
+        <div class="row" style="min-width: 0; flex: 1 1 220px">
           <div class="dot-ico" style="background: var(--purple-light); color: #7c3aed">
             <i class="{{ recipe.icon }}"></i>
           </div>
-          <div>
+          <div style="min-width: 0">
             <h3>{{ recipe.title }}</h3>
-            <div class="sub">
+            <div class="sub" style="word-break: break-word">
               {{ recipe.steps.length }} pasos
               @if (recipe.file) {
                 · <span class="mono">infra/n8n/workflows/{{ recipe.file }}</span>
