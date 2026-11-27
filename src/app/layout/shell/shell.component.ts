@@ -63,6 +63,7 @@ export class ShellComponent implements OnInit {
   protected readonly collapsed = signal(false);
   protected readonly mobileOpen = signal(false);
   protected readonly scrolled = signal(false);
+  protected readonly showToTop = signal(false);
   protected readonly scrollProgress = signal(0);
   protected readonly loggingOut = signal(false);
   protected readonly logoutName = signal('');
@@ -191,7 +192,16 @@ export class ShellComponent implements OnInit {
   @HostListener('window:scroll')
   protected onScroll(): void {
     const y = window.scrollY;
-    this.scrolled.set(y > 8);
+    if (!this.scrolled() && y > 16) {
+      this.scrolled.set(true);
+    } else if (this.scrolled() && y < 4) {
+      this.scrolled.set(false);
+    }
+    if (!this.showToTop() && y > 260) {
+      this.showToTop.set(true);
+    } else if (this.showToTop() && y < 180) {
+      this.showToTop.set(false);
+    }
     const limit = document.documentElement.scrollHeight - window.innerHeight;
     this.scrollProgress.set(limit > 0 ? Math.min(y / limit, 1) : 0);
   }

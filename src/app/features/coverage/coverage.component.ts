@@ -3,6 +3,7 @@ import {
   Component,
   DestroyRef,
   ElementRef,
+  HostListener,
   computed,
   effect,
   inject,
@@ -10,6 +11,7 @@ import {
   viewChild,
 } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
+import { ActivatedRoute, Router } from '@angular/router';
 import { catchError, of } from 'rxjs';
 
 import { CrmApi, NetworkApi } from '../../core/api';
@@ -241,6 +243,8 @@ export class CoverageComponent {
   private readonly crm = inject(CrmApi);
   private readonly toast = inject(ToastService);
   private readonly fb = inject(FormBuilder);
+  private readonly router = inject(Router);
+  private readonly route = inject(ActivatedRoute);
   private readonly destroyRef = inject(DestroyRef);
 
   private readonly mapHost = viewChild<ElementRef<HTMLDivElement>>('mapHost');
@@ -254,6 +258,7 @@ export class CoverageComponent {
   protected readonly mapStyles = MAP_STYLES;
   protected readonly mapStyle = signal<MapStyleId>('satellite');
   protected readonly mapCollapsed = signal(false);
+  protected readonly mapFullPage = signal(false);
 
   protected readonly nodes = collection(() => this.api.nodes(), [] as NetworkNode[]);
   protected readonly fiberLinks = collection(
@@ -567,7 +572,25 @@ export class CoverageComponent {
       this.renderDraftFiber(tracing, fromId, toId, waypoints, color);
     });
 
+    const qpSub = this.route.queryParamMap.subscribe((params) => {
+      const full = params.get('vista') === 'mapa';
+      const changed = this.mapFullPage() !== full;
+      this.mapFullPage.set(full);
+      if (full && this.mapCollapsed()) {
+        this.mapCollapsed.set(false);
+      }
+      if (changed) {
+        this.refreshMapSize();
+      }
+    });
+
+    effect(() => {
+      document.body.classList.toggle('map-fullpage-open', this.mapFullPage());
+    });
+
     this.destroyRef.onDestroy(() => {
+      qpSub.unsubscribe();
+      document.body.classList.remove('map-fullpage-open');
       this.map?.remove();
       this.map = null;
       this.markersLayer = null;
@@ -575,6 +598,20 @@ export class CoverageComponent {
       this.draftFiberLayer = null;
       this.activeTileLayers = [];
     });
+  }
+
+  @HostListener('document:keydown.escape')
+  protected onEscape(): void {
+    if (
+      this.mapFullPage() &&
+      !this.modalOpen() &&
+      !this.linkModalOpen() &&
+      !this.deleting() &&
+      !this.deletingLink() &&
+      !this.managingNapId()
+    ) {
+      this.closeFullPageMap();
+    }
   }
 
   protected nodeName(nodeId: string): string {
@@ -644,6 +681,29 @@ export class CoverageComponent {
 
   protected isClientAssignedElsewhere(clientId: string): boolean {
     return this.clientNapIndex().has(clientId);
+  }
+
+  protected openFullPageMap(): void {
+    if (this.mapCollapsed()) {
+      this.mapCollapsed.set(false);
+    }
+    this.mapFullPage.set(true);
+    void this.router.navigate([], {
+      relativeTo: this.route,
+      queryParams: { vista: 'mapa' },
+      queryParamsHandling: 'merge',
+    });
+    this.refreshMapSize();
+  }
+
+  protected closeFullPageMap(): void {
+    this.mapFullPage.set(false);
+    void this.router.navigate([], {
+      relativeTo: this.route,
+      queryParams: { vista: null },
+      queryParamsHandling: 'merge',
+    });
+    this.refreshMapSize();
   }
 
   protected toggleMapCollapsed(): void {

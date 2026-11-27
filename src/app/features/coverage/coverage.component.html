@@ -27,43 +27,73 @@
     </button>
   </app-page-head>
 
-  <div class="grid-2-1">
-    <div class="card coverage-map-card" [class.is-map-collapsed]="mapCollapsed()">
-      <div class="card-header">
-        <div>
-          <h3>Mapa de cobertura</h3>
-          <div class="sub">
-            @if (mapCollapsed()) {
-              Mapa contraido · pulsa <b>Desplegar</b> para visualizar nodos y trazados
-            } @else if (relocatingNode(); as rNode) {
-              <b style="color: var(--brand-1)">Reubicando "{{ rNode.name }}":</b>
-              arrastra el icono del nodo con el mouse/dedo o haz clic/toca directamente en la nueva posicion del mapa
-              @if (relocateCoords(); as rc) {
-                (<span class="mono">{{ rc.lat }}, {{ rc.lon }}</span>)
+  <div class="grid-2-1" [class.has-fullpage-map]="mapFullPage()">
+    <div
+      class="card coverage-map-card"
+      [class.is-map-collapsed]="mapCollapsed() && !mapFullPage()"
+      [class.is-map-fullpage]="mapFullPage()"
+    >
+      <div class="card-header coverage-map-header">
+        <div class="coverage-map-title-group">
+          @if (mapFullPage()) {
+            <button
+              appRipple
+              type="button"
+              class="btn btn-outline btn-sm coverage-back-btn"
+              (click)="closeFullPageMap()"
+            >
+              <i class="fas fa-arrow-left"></i> Volver atras
+            </button>
+          }
+          <div style="min-width: 0; flex: 1">
+            <h3>{{ mapFullPage() ? 'Mapa de cobertura completo' : 'Mapa de cobertura' }}</h3>
+            <div class="sub">
+              @if (mapCollapsed() && !mapFullPage()) {
+                Mapa contraido · pulsa <b>Desplegar</b> para visualizar nodos y trazados
+              } @else if (relocatingNode(); as rNode) {
+                <b style="color: var(--brand-1)">Reubicando "{{ rNode.name }}":</b>
+                arrastra el icono del nodo con el mouse/dedo o haz clic/toca directamente en la nueva posicion del mapa
+                @if (relocateCoords(); as rc) {
+                  (<span class="mono">{{ rc.lat }}, {{ rc.lon }}</span>)
+                }
+              } @else if (tracingFiber()) {
+                <b style="color: var(--brand-1)">Ajustando trayectoria de fibra:</b>
+                arrastra los puntos <b>+</b> para curvar el trazado por calles/postes, mueve los vertices o haz clic derecho sobre un punto para quitarlo
+                ({{ draftWaypoints().length }} vertice(s) · {{ formatDistance(draftDistanceMeters()) }})
+              } @else if (pickedCoords(); as coords) {
+                Punto seleccionado: <span class="mono">{{ coords.lat }}, {{ coords.lon }}</span>
+                <button
+                  type="button"
+                  class="btn btn-ghost btn-sm"
+                  style="padding: 0.15rem 0.5rem; margin-left: 0.35rem"
+                  (click)="openCreate(coords.lat, coords.lon)"
+                >
+                  <i class="fas fa-plus"></i> Crear nodo aqui
+                </button>
+              } @else {
+                Ubicacion base: Providencia, Narino · verde (disponible), amarillo (pocos puertos), rojo (llena)
               }
-            } @else if (tracingFiber()) {
-              <b style="color: var(--brand-1)">Ajustando trayectoria de fibra:</b>
-              arrastra los puntos <b>+</b> para curvar el trazado por calles/postes, mueve los vertices o haz clic derecho sobre un punto para quitarlo
-              ({{ draftWaypoints().length }} vertice(s) · {{ formatDistance(draftDistanceMeters()) }})
-            } @else if (pickedCoords(); as coords) {
-              Punto seleccionado: <span class="mono">{{ coords.lat }}, {{ coords.lon }}</span>
-              <button
-                type="button"
-                class="btn btn-ghost btn-sm"
-                style="padding: 0.15rem 0.5rem; margin-left: 0.35rem"
-                (click)="openCreate(coords.lat, coords.lon)"
-              >
-                <i class="fas fa-plus"></i> Crear nodo aqui
-              </button>
-            } @else {
-              Ubicacion base: Providencia, Narino · verde (disponible), amarillo (pocos puertos), rojo (llena)
-            }
+            </div>
           </div>
         </div>
         <div class="row-wrap">
-          @if (leafletReady() && !mapCollapsed()) {
+          @if (leafletReady() && (!mapCollapsed() || mapFullPage())) {
             <button type="button" class="btn btn-outline btn-sm" (click)="recenterMap()">
               <i class="fas fa-crosshairs"></i> Centrar
+            </button>
+          }
+          @if (mapFullPage()) {
+            <button
+              appRipple
+              type="button"
+              class="btn btn-accent btn-sm"
+              [disabled]="nodes.value().length < 2"
+              (click)="openCreateLink()"
+            >
+              <i class="fas fa-bezier-curve"></i> Conectar fibra
+            </button>
+            <button appRipple type="button" class="btn btn-grad btn-sm" (click)="openCreate()">
+              <i class="fas fa-map-pin"></i> Registrar nodo
             </button>
           }
           <span class="badge badge-info">{{ filtered().length }} nodos</span>
@@ -72,24 +102,35 @@
               <i class="fas fa-bezier-curve"></i> {{ fiberLinks.value().length }} fibra(s) · {{ formatDistance(totalFiberMeters()) }}
             </span>
           }
-          <button
-            type="button"
-            class="btn btn-outline btn-sm coverage-collapse-btn"
-            [attr.aria-expanded]="!mapCollapsed()"
-            [title]="mapCollapsed() ? 'Desplegar mapa de cobertura' : 'Contraer mapa de cobertura'"
-            (click)="toggleMapCollapsed()"
-          >
-            <i
-              class="fas"
-              [class.fa-chevron-up]="!mapCollapsed()"
-              [class.fa-chevron-down]="mapCollapsed()"
-            ></i>
-            {{ mapCollapsed() ? 'Desplegar' : 'Contraer' }}
-          </button>
+          @if (!mapFullPage()) {
+            <button
+              appRipple
+              type="button"
+              class="btn btn-outline btn-sm"
+              title="Abrir el mapa en pantalla completa"
+              (click)="openFullPageMap()"
+            >
+              <i class="fas fa-expand"></i> Mapa completo
+            </button>
+            <button
+              type="button"
+              class="btn btn-outline btn-sm coverage-collapse-btn"
+              [attr.aria-expanded]="!mapCollapsed()"
+              [title]="mapCollapsed() ? 'Desplegar mapa de cobertura' : 'Contraer mapa de cobertura'"
+              (click)="toggleMapCollapsed()"
+            >
+              <i
+                class="fas"
+                [class.fa-chevron-up]="!mapCollapsed()"
+                [class.fa-chevron-down]="mapCollapsed()"
+              ></i>
+              {{ mapCollapsed() ? 'Desplegar' : 'Contraer' }}
+            </button>
+          }
         </div>
       </div>
 
-      <div class="coverage-map-body" [class.is-collapsed]="mapCollapsed()">
+      <div class="coverage-map-body" [class.is-collapsed]="mapCollapsed() && !mapFullPage()">
 
       @if (nodes.error()) {
         <app-async-state

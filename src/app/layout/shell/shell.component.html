@@ -104,7 +104,7 @@
   <router-outlet />
 </main>
 
-@if (scrolled()) {
+@if (showToTop()) {
   <button appRipple type="button" class="to-top" aria-label="Volver arriba" (click)="toTop()">
     <i class="fas fa-arrow-up"></i>
   </button>
