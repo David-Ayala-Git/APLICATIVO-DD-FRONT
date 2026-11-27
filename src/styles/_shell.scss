@@ -102,11 +102,12 @@ app-shell {
 .brand-logo-text {
   display: block;
   width: 100%;
-  max-width: 168px;
-  max-height: 34px;
+  max-width: 174px;
+  max-height: 32px;
   height: auto;
   object-fit: contain;
   object-position: left center;
+  filter: drop-shadow(0 2px 8px rgba(34, 211, 238, 0.2));
 }
 .sidebar.collapsed .sidebar-brand {
   justify-content: center;
