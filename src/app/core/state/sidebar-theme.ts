@@ -1,26 +1,6 @@
+import { Tenant } from '../models';
+
 export type AppThemeMode = 'light' | 'dark';
-
-const APP_THEME_KEY = 'dd_app_theme';
-const LEGACY_SIDEBAR_THEME_KEY = 'dd_sidebar_theme';
-
-export function loadAppTheme(): AppThemeMode {
-  try {
-    const saved = localStorage.getItem(APP_THEME_KEY) ?? localStorage.getItem(LEGACY_SIDEBAR_THEME_KEY);
-    return saved === 'dark' ? 'dark' : 'light';
-  } catch {
-    return 'light';
-  }
-}
-
-export function applyAppTheme(mode: AppThemeMode): void {
-  document.documentElement.setAttribute('data-theme', mode);
-  try {
-    localStorage.setItem(APP_THEME_KEY, mode);
-    localStorage.setItem(LEGACY_SIDEBAR_THEME_KEY, mode);
-  } catch {
-    // Almacenamiento local no disponible
-  }
-}
 
 export interface SidebarColors {
   darkBg: string;
@@ -28,23 +8,20 @@ export interface SidebarColors {
   lightBg: string;
   lightText: string;
   indicator: string;
-  pageDarkBg: string;
-  pageLightBg: string;
 }
 
-/** Colores originales del sidebar y fondo de pagina D&D. */
+/** Colores originales del sidebar D&D (azul marino profundo en oscuro y blanco limpio en claro). */
 export const DEFAULT_SIDEBAR_COLORS: SidebarColors = {
   darkBg: '#0b1020',
   darkText: '#c7cde0',
   lightBg: '#ffffff',
   lightText: '#374151',
   indicator: '#7c3aed',
-  pageDarkBg: '#090e1a',
-  pageLightBg: '#f6f7fb',
 };
 
 const HEX = /^#[0-9a-f]{6}$/i;
 const STORAGE_PREFIX = 'dd_sidebar_colors:';
+const APP_THEME_KEY = 'dd_app_theme';
 
 const SIDEBAR_COLOR_VARS = [
   '--sb-custom-dark-bg',
@@ -53,8 +30,6 @@ const SIDEBAR_COLOR_VARS = [
   '--sb-custom-light-bg',
   '--sb-custom-light-text',
   '--sb-custom-indicator',
-  '--page-custom-dark-bg',
-  '--page-custom-light-bg',
 ] as const;
 
 function storageKey(tenantSlug: string | null | undefined): string {
@@ -65,45 +40,88 @@ function validHex(value: unknown, fallback: string): string {
   return typeof value === 'string' && HEX.test(value) ? value.toLowerCase() : fallback;
 }
 
-export function loadSidebarColors(tenantSlug: string | null | undefined): SidebarColors {
+export function sanitizeSidebarColors(input: Partial<SidebarColors> | null | undefined): SidebarColors {
+  return {
+    darkBg: validHex(input?.darkBg, DEFAULT_SIDEBAR_COLORS.darkBg),
+    darkText: validHex(input?.darkText, DEFAULT_SIDEBAR_COLORS.darkText),
+    lightBg: validHex(input?.lightBg, DEFAULT_SIDEBAR_COLORS.lightBg),
+    lightText: validHex(input?.lightText, DEFAULT_SIDEBAR_COLORS.lightText),
+    indicator: validHex(input?.indicator, DEFAULT_SIDEBAR_COLORS.indicator),
+  };
+}
+
+/**
+ * Lee los colores del sidebar guardados en el backend dentro de
+ * `tenant_module.config.sidebarColors`. Devuelve null si el proveedor usa
+ * los colores por defecto.
+ */
+export function extractTenantSidebarColors(tenant: Tenant | null | undefined): SidebarColors | null {
+  if (!tenant?.modules?.length) {
+    return null;
+  }
+  for (const mod of tenant.modules) {
+    const raw = mod.config?.['sidebarColors'];
+    if (raw && typeof raw === 'object') {
+      return sanitizeSidebarColors(raw as Partial<SidebarColors>);
+    }
+  }
+  return null;
+}
+
+/**
+ * Elige el modulo del tenant donde se guarda `config.sidebarColors` en el backend
+ * (conservando intactas todas las demas claves de `config`).
+ */
+export function pickSidebarConfigModule(tenant: Tenant | null | undefined) {
+  if (!tenant?.modules?.length) {
+    return null;
+  }
+  return (
+    tenant.modules.find((m) => m.config?.['sidebarColors'] !== undefined) ??
+    tenant.modules.find((m) => m.moduleKey === 'crm') ??
+    tenant.modules[0] ??
+    null
+  );
+}
+
+export function loadSidebarColors(
+  tenantSlug: string | null | undefined,
+  tenant?: Tenant | null,
+): SidebarColors {
+  const fromBackend = extractTenantSidebarColors(tenant);
+  if (fromBackend) {
+    cacheSidebarColors(tenantSlug, fromBackend);
+    return fromBackend;
+  }
   try {
     const raw = localStorage.getItem(storageKey(tenantSlug));
     if (!raw) {
       return { ...DEFAULT_SIDEBAR_COLORS };
     }
-    const parsed = JSON.parse(raw) as Partial<SidebarColors>;
-    return {
-      darkBg: validHex(parsed.darkBg, DEFAULT_SIDEBAR_COLORS.darkBg),
-      darkText: validHex(parsed.darkText, DEFAULT_SIDEBAR_COLORS.darkText),
-      lightBg: validHex(parsed.lightBg, DEFAULT_SIDEBAR_COLORS.lightBg),
-      lightText: validHex(parsed.lightText, DEFAULT_SIDEBAR_COLORS.lightText),
-      indicator: validHex(parsed.indicator, DEFAULT_SIDEBAR_COLORS.indicator),
-      pageDarkBg: validHex(parsed.pageDarkBg, DEFAULT_SIDEBAR_COLORS.pageDarkBg),
-      pageLightBg: validHex(parsed.pageLightBg, DEFAULT_SIDEBAR_COLORS.pageLightBg),
-    };
+    return sanitizeSidebarColors(JSON.parse(raw) as Partial<SidebarColors>);
   } catch {
     return { ...DEFAULT_SIDEBAR_COLORS };
   }
+}
+
+export function cacheSidebarColors(
+  tenantSlug: string | null | undefined,
+  colors: SidebarColors,
+): SidebarColors {
+  const clean = sanitizeSidebarColors(colors);
+  try {
+    localStorage.setItem(storageKey(tenantSlug), JSON.stringify(clean));
+  } catch {
+    // Almacenamiento local no disponible
+  }
+  return clean;
 }
 
 export function saveSidebarColors(
   tenantSlug: string | null | undefined,
   colors: SidebarColors,
 ): SidebarColors {
-  const clean: SidebarColors = {
-    darkBg: validHex(colors.darkBg, DEFAULT_SIDEBAR_COLORS.darkBg),
-    darkText: validHex(colors.darkText, DEFAULT_SIDEBAR_COLORS.darkText),
-    lightBg: validHex(colors.lightBg, DEFAULT_SIDEBAR_COLORS.lightBg),
-    lightText: validHex(colors.lightText, DEFAULT_SIDEBAR_COLORS.lightText),
-    indicator: validHex(colors.indicator, DEFAULT_SIDEBAR_COLORS.indicator),
-    pageDarkBg: validHex(colors.pageDarkBg, DEFAULT_SIDEBAR_COLORS.pageDarkBg),
-    pageLightBg: validHex(colors.pageLightBg, DEFAULT_SIDEBAR_COLORS.pageLightBg),
-  };
-  try {
-    localStorage.setItem(storageKey(tenantSlug), JSON.stringify(clean));
-  } catch {
-    // Almacenamiento local no disponible
-  }
+  const clean = cacheSidebarColors(tenantSlug, colors);
   applySidebarColors(clean);
   return clean;
 }
@@ -126,34 +144,42 @@ export function applySidebarColors(colors: SidebarColors | null): void {
     return;
   }
 
-  const darkBg = validHex(colors.darkBg, DEFAULT_SIDEBAR_COLORS.darkBg);
-  const darkText = validHex(colors.darkText, DEFAULT_SIDEBAR_COLORS.darkText);
-  const lightBg = validHex(colors.lightBg, DEFAULT_SIDEBAR_COLORS.lightBg);
-  const lightText = validHex(colors.lightText, DEFAULT_SIDEBAR_COLORS.lightText);
-  const indicator = validHex(colors.indicator, DEFAULT_SIDEBAR_COLORS.indicator);
-  const pageDarkBg = validHex(colors.pageDarkBg, DEFAULT_SIDEBAR_COLORS.pageDarkBg);
-  const pageLightBg = validHex(colors.pageLightBg, DEFAULT_SIDEBAR_COLORS.pageLightBg);
+  const clean = sanitizeSidebarColors(colors);
 
-  if (darkBg !== DEFAULT_SIDEBAR_COLORS.darkBg) {
-    style.setProperty('--sb-custom-dark-bg', darkBg);
-    style.setProperty('--sb-custom-dark-bg-2', `color-mix(in srgb, ${darkBg} 92%, white)`);
+  if (clean.darkBg !== DEFAULT_SIDEBAR_COLORS.darkBg) {
+    style.setProperty('--sb-custom-dark-bg', clean.darkBg);
+    style.setProperty('--sb-custom-dark-bg-2', `color-mix(in srgb, ${clean.darkBg} 92%, white)`);
   }
-  if (darkText !== DEFAULT_SIDEBAR_COLORS.darkText) {
-    style.setProperty('--sb-custom-dark-text', darkText);
+  if (clean.darkText !== DEFAULT_SIDEBAR_COLORS.darkText) {
+    style.setProperty('--sb-custom-dark-text', clean.darkText);
   }
-  if (lightBg !== DEFAULT_SIDEBAR_COLORS.lightBg) {
-    style.setProperty('--sb-custom-light-bg', lightBg);
+  if (clean.lightBg !== DEFAULT_SIDEBAR_COLORS.lightBg) {
+    style.setProperty('--sb-custom-light-bg', clean.lightBg);
   }
-  if (lightText !== DEFAULT_SIDEBAR_COLORS.lightText) {
-    style.setProperty('--sb-custom-light-text', lightText);
+  if (clean.lightText !== DEFAULT_SIDEBAR_COLORS.lightText) {
+    style.setProperty('--sb-custom-light-text', clean.lightText);
   }
-  if (indicator !== DEFAULT_SIDEBAR_COLORS.indicator) {
-    style.setProperty('--sb-custom-indicator', indicator);
+  if (clean.indicator !== DEFAULT_SIDEBAR_COLORS.indicator) {
+    style.setProperty('--sb-custom-indicator', clean.indicator);
   }
-  if (pageDarkBg !== DEFAULT_SIDEBAR_COLORS.pageDarkBg) {
-    style.setProperty('--page-custom-dark-bg', pageDarkBg);
+}
+
+/** Modo claro / oscuro global de toda la aplicacion. */
+export function loadAppTheme(): AppThemeMode {
+  try {
+    const saved = localStorage.getItem(APP_THEME_KEY) ?? localStorage.getItem('dd_sidebar_theme');
+    return saved === 'dark' ? 'dark' : 'light';
+  } catch {
+    return 'light';
   }
-  if (pageLightBg !== DEFAULT_SIDEBAR_COLORS.pageLightBg) {
-    style.setProperty('--page-custom-light-bg', pageLightBg);
+}
+
+export function applyAppTheme(mode: AppThemeMode): void {
+  document.documentElement.setAttribute('data-theme', mode);
+  try {
+    localStorage.setItem(APP_THEME_KEY, mode);
+    localStorage.setItem('dd_sidebar_theme', mode);
+  } catch {
+    // Almacenamiento local no disponible
   }
 }

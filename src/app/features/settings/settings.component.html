@@ -110,9 +110,9 @@
       <div class="card" [style.margin-top]="tenant() ? '1rem' : null">
         <div class="card-header">
           <div>
-            <h3>Colores de apariencia (Sidebar y Fondo)</h3>
+            <h3>Colores del menu lateral (Sidebar)</h3>
             <div class="sub">
-              Personaliza el fondo de toda la pagina, el menu lateral y el indicador activo en modo oscuro y claro
+              Personaliza el fondo, texto e indicador activo en modo oscuro y claro con vista previa en vivo
             </div>
           </div>
           <span class="badge badge-violet">Vista previa en vivo</span>
@@ -121,34 +121,7 @@
           <form [formGroup]="sidebarForm" (ngSubmit)="saveSidebarPalette()">
             <div class="form-row">
               <div class="form-group">
-                <label for="page-dark-bg">Fondo de pagina (oscuro)</label>
-                <div class="row" style="gap: 0.5rem">
-                  <input
-                    id="page-dark-bg"
-                    type="color"
-                    formControlName="pageDarkBg"
-                    style="width: 44px; height: 38px; padding: 2px; cursor: pointer"
-                  />
-                  <input class="form-control mono" [value]="sidebarForm.controls.pageDarkBg.value" disabled />
-                </div>
-              </div>
-              <div class="form-group">
-                <label for="page-light-bg">Fondo de pagina (claro)</label>
-                <div class="row" style="gap: 0.5rem">
-                  <input
-                    id="page-light-bg"
-                    type="color"
-                    formControlName="pageLightBg"
-                    style="width: 44px; height: 38px; padding: 2px; cursor: pointer"
-                  />
-                  <input class="form-control mono" [value]="sidebarForm.controls.pageLightBg.value" disabled />
-                </div>
-              </div>
-            </div>
-
-            <div class="form-row">
-              <div class="form-group">
-                <label for="sb-dark-bg">Fondo sidebar (oscuro)</label>
+                <label for="sb-dark-bg">Fondo modo oscuro</label>
                 <div class="row" style="gap: 0.5rem">
                   <input
                     id="sb-dark-bg"
@@ -160,7 +133,7 @@
                 </div>
               </div>
               <div class="form-group">
-                <label for="sb-dark-text">Texto e iconos sidebar (oscuro)</label>
+                <label for="sb-dark-text">Texto e iconos (oscuro)</label>
                 <div class="row" style="gap: 0.5rem">
                   <input
                     id="sb-dark-text"
@@ -175,7 +148,7 @@
 
             <div class="form-row">
               <div class="form-group">
-                <label for="sb-light-bg">Fondo sidebar (claro)</label>
+                <label for="sb-light-bg">Fondo modo claro</label>
                 <div class="row" style="gap: 0.5rem">
                   <input
                     id="sb-light-bg"
@@ -187,7 +160,7 @@
                 </div>
               </div>
               <div class="form-group">
-                <label for="sb-light-text">Texto e iconos sidebar (claro)</label>
+                <label for="sb-light-text">Texto e iconos (claro)</label>
                 <div class="row" style="gap: 0.5rem">
                   <input
                     id="sb-light-text"
@@ -222,7 +195,7 @@
                 class="btn btn-grad btn-sm"
                 [disabled]="!sidebarColorsChanged()"
               >
-                <i class="fas fa-swatchbook"></i> Guardar apariencia
+                <i class="fas fa-swatchbook"></i> Guardar colores del sidebar
               </button>
               <button type="button" class="btn btn-outline btn-sm" (click)="resetSidebarPalette()">
                 <i class="fas fa-rotate-left"></i> Restablecer originales

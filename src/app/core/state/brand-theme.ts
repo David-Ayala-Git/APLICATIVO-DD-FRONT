@@ -44,7 +44,7 @@ export function applyBrandTheme(tenant: Tenant | null): void {
   style.setProperty('--brand-1', `color-mix(in srgb, ${primary} 88%, white)`);
   style.setProperty('--brand-2', accent);
   style.setProperty('--accent', accent);
-  style.setProperty('--accent-dark', `color-mix(in srgb, ${accent} 78%, var(--text-primary))`);
+  style.setProperty('--accent-dark', `color-mix(in srgb, ${accent} 70%, black)`);
   style.setProperty('--accent-light', `color-mix(in srgb, ${accent} 12%, var(--surface))`);
   style.setProperty(
     '--grad-soft',

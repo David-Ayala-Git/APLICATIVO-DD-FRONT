@@ -323,73 +323,58 @@
         <div class="card-header">
           <div>
             <h3>Control de Cajas NAP</h3>
-            <div class="sub">
-              @if (syncingSummary()) {
-                Sincronizando con red…
-              } @else if (lastSyncedAt(); as synced) {
-                En vivo · {{ napSummary().freePorts }} puertos libres · {{ synced | date: 'HH:mm:ss' }}
-              } @else {
-                Datos en vivo desde red
-              }
-            </div>
+            <div class="sub">{{ napSummary().freePorts }} libres · sincronizado en vivo</div>
           </div>
           <span class="badge badge-info">{{ napSummary().usedPorts }}/{{ napSummary().totalPorts }} puertos</span>
         </div>
         <div class="card-body">
-          @if (nodes.error()) {
-            <app-async-state [loading]="false" [error]="nodes.error()" (retry)="reloadAll()" />
-          } @else {
-            <button
-              type="button"
-              class="list-row list-row-btn"
-              [class.is-active]="napFilter() === 'AVAILABLE'"
-              title="Filtrar cajas NAP disponibles"
-              (click)="toggleNapQuickFilter('AVAILABLE')"
-            >
-              <div class="dot-ico" style="background: rgba(16, 185, 129, 0.14); color: #10b981">
-                <i class="fas fa-circle-check"></i>
-              </div>
-              <div class="flex-1">
-                <div class="cell-main">Puertos disponibles</div>
-                <div class="cell-sub">Capacidad saludable · {{ napSummary().freePorts }} libres</div>
-              </div>
-              <span class="badge badge-success">{{ napSummary().available }}</span>
-            </button>
+          <button
+            type="button"
+            class="list-row list-row-btn"
+            [class.is-active-filter]="napFilter() === 'AVAILABLE'"
+            (click)="toggleNapSummaryFilter('AVAILABLE')"
+          >
+            <div class="dot-ico" style="background: rgba(16, 185, 129, 0.14); color: #10b981">
+              <i class="fas fa-circle-check"></i>
+            </div>
+            <div class="flex-1">
+              <div class="cell-main">Puertos disponibles</div>
+              <div class="cell-sub">Capacidad saludable</div>
+            </div>
+            <span class="badge badge-success">{{ napSummary().available }}</span>
+          </button>
 
-            <button
-              type="button"
-              class="list-row list-row-btn"
-              [class.is-active]="napFilter() === 'LOW'"
-              title="Filtrar cajas NAP con pocos puertos"
-              (click)="toggleNapQuickFilter('LOW')"
-            >
-              <div class="dot-ico" style="background: rgba(245, 158, 11, 0.14); color: #f59e0b">
-                <i class="fas fa-triangle-exclamation"></i>
-              </div>
-              <div class="flex-1">
-                <div class="cell-main">Pocos puertos</div>
-                <div class="cell-sub">75% o mas ocupada</div>
-              </div>
-              <span class="badge badge-warning">{{ napSummary().low }}</span>
-            </button>
+          <button
+            type="button"
+            class="list-row list-row-btn"
+            [class.is-active-filter]="napFilter() === 'LOW'"
+            (click)="toggleNapSummaryFilter('LOW')"
+          >
+            <div class="dot-ico" style="background: rgba(245, 158, 11, 0.14); color: #f59e0b">
+              <i class="fas fa-triangle-exclamation"></i>
+            </div>
+            <div class="flex-1">
+              <div class="cell-main">Pocos puertos</div>
+              <div class="cell-sub">75% o mas ocupada</div>
+            </div>
+            <span class="badge badge-warning">{{ napSummary().low }}</span>
+          </button>
 
-            <button
-              type="button"
-              class="list-row list-row-btn"
-              [class.is-active]="napFilter() === 'FULL'"
-              title="Filtrar cajas NAP llenas"
-              (click)="toggleNapQuickFilter('FULL')"
-            >
-              <div class="dot-ico" style="background: rgba(239, 68, 68, 0.14); color: #ef4444">
-                <i class="fas fa-circle-xmark"></i>
-              </div>
-              <div class="flex-1">
-                <div class="cell-main">Cajas llenas</div>
-                <div class="cell-sub">Sin puertos libres</div>
-              </div>
-              <span class="badge badge-danger">{{ napSummary().full }}</span>
-            </button>
-          }
+          <button
+            type="button"
+            class="list-row list-row-btn"
+            [class.is-active-filter]="napFilter() === 'FULL'"
+            (click)="toggleNapSummaryFilter('FULL')"
+          >
+            <div class="dot-ico" style="background: rgba(239, 68, 68, 0.14); color: #ef4444">
+              <i class="fas fa-circle-xmark"></i>
+            </div>
+            <div class="flex-1">
+              <div class="cell-main">Cajas llenas</div>
+              <div class="cell-sub">Sin puertos libres</div>
+            </div>
+            <span class="badge badge-danger">{{ napSummary().full }}</span>
+          </button>
         </div>
       </div>
 
@@ -397,35 +382,37 @@
         <div class="card-header">
           <div>
             <h3>Por tipo de nodo</h3>
-            <div class="sub">Haz clic para filtrar el mapa y la tabla</div>
+            <div class="sub">{{ nodes.value().length }} total · clic para filtrar</div>
           </div>
-          <span class="badge badge-success">
-            <i class="fas fa-circle"></i> {{ nodes.value().length }} total
-          </span>
+          @if (typeFilter() !== 'ALL' || napFilter() !== 'ALL') {
+            <button
+              type="button"
+              class="btn btn-ghost btn-sm"
+              (click)="typeFilter.set('ALL'); napFilter.set('ALL')"
+            >
+              Ver todos
+            </button>
+          }
         </div>
         <div class="card-body">
-          @if (nodes.error()) {
-            <app-async-state [loading]="false" [error]="nodes.error()" (retry)="reloadAll()" />
-          } @else {
-            @for (row of byType(); track row.value) {
-              <button
-                type="button"
-                class="list-row list-row-btn"
-                [class.is-active]="typeFilter() === row.value"
-                (click)="toggleTypeQuickFilter(row.value)"
-              >
-                <div class="dot-ico" [style.background]="row.color + '1a'" [style.color]="row.color">
-                  <i class="{{ row.icon }}"></i>
-                </div>
-                <div class="flex-1">
-                  <div class="cell-main">{{ row.label.text }}</div>
-                  <div class="cell-sub">{{ row.active }} activos de {{ row.count }}</div>
-                </div>
-                <span class="badge {{ row.count > 0 ? 'badge-violet' : 'badge-gray' }}">
-                  {{ row.count }}
-                </span>
-              </button>
-            }
+          @for (row of byType(); track row.value) {
+            <button
+              type="button"
+              class="list-row list-row-btn"
+              [class.is-active-filter]="typeFilter() === row.value"
+              (click)="toggleTypeSummaryFilter(row.value)"
+            >
+              <div class="dot-ico" [style.background]="row.color + '1a'" [style.color]="row.color">
+                <i class="{{ row.icon }}"></i>
+              </div>
+              <div class="flex-1">
+                <div class="cell-main">{{ row.label.text }}</div>
+                <div class="cell-sub">{{ row.active }} activos de {{ row.count }}</div>
+              </div>
+              <span class="badge {{ row.count > 0 ? 'badge-violet' : 'badge-gray' }}">
+                {{ row.count }}
+              </span>
+            </button>
           }
         </div>
       </div>

@@ -395,37 +395,25 @@ export class CoverageComponent {
 
   protected readonly napSummary = computed(() => {
     const naps = this.nodes.value().filter((n) => n.type === 'NAP');
-    const totalPorts = naps.reduce((s, n) => s + (n.napCapacity ?? 8), 0);
-    const usedPorts = naps.reduce((s, n) => s + (n.usedPorts ?? n.assignments?.length ?? 0), 0);
-    let available = 0;
-    let low = 0;
-    let full = 0;
-    for (const n of naps) {
+    const resolved = naps.map((n) => {
       const cap = n.napCapacity ?? 8;
       const used = n.usedPorts ?? n.assignments?.length ?? 0;
       const status: NapOccupancyStatus =
-        n.napStatus ?? (used >= cap ? 'FULL' : cap > 0 && used / cap >= 0.75 ? 'LOW' : 'AVAILABLE');
-      if (status === 'FULL') {
-        full++;
-      } else if (status === 'LOW') {
-        low++;
-      } else {
-        available++;
-      }
-    }
+        n.napStatus ?? (used >= cap ? 'FULL' : used / cap >= 0.75 ? 'LOW' : 'AVAILABLE');
+      return { cap, used, status };
+    });
+    const totalPorts = resolved.reduce((s, n) => s + n.cap, 0);
+    const usedPorts = resolved.reduce((s, n) => s + n.used, 0);
     return {
       total: naps.length,
-      available,
-      low,
-      full,
+      available: resolved.filter((n) => n.status === 'AVAILABLE').length,
+      low: resolved.filter((n) => n.status === 'LOW').length,
+      full: resolved.filter((n) => n.status === 'FULL').length,
       totalPorts,
       usedPorts,
       freePorts: Math.max(0, totalPorts - usedPorts),
     };
   });
-
-  protected readonly lastSyncedAt = signal<Date | null>(null);
-  protected readonly syncingSummary = computed(() => this.nodes.loading() || this.fiberLinks.loading());
 
   protected readonly byType = computed(() => {
     const all = this.nodes.value();
@@ -563,16 +551,8 @@ export class CoverageComponent {
       document.body.classList.toggle('map-fullpage-open', this.mapFullPage());
     });
 
-    // Marca ultima sincronizacion exitosa con dd_ms_network
-    effect(() => {
-      this.nodes.value();
-      if (!this.nodes.loading() && !this.nodes.error()) {
-        this.lastSyncedAt.set(new Date());
-      }
-    });
-
-    // Sincronizacion automatica en vivo con el backend (al volver a la pestana y cada 30s)
-    const syncIfIdle = () => {
+    // Sincronizacion automatica con el backend para mantener Cajas NAP y Por tipo de nodo al dia
+    const syncTimer = setInterval(() => {
       if (
         document.visibilityState === 'visible' &&
         !this.saving() &&
@@ -582,20 +562,18 @@ export class CoverageComponent {
         this.nodes.reload();
         this.fiberLinks.reload();
       }
-    };
-    const onVisibility = () => {
-      if (document.visibilityState === 'visible') {
-        syncIfIdle();
+    }, 30000);
+
+    const onWindowFocus = () => {
+      if (!this.saving() && !this.tracingFiber() && !this.relocatingNodeId()) {
+        this.nodes.reload();
       }
     };
-    const pollTimer = setInterval(syncIfIdle, 30_000);
-    document.addEventListener('visibilitychange', onVisibility);
-    window.addEventListener('focus', syncIfIdle);
+    window.addEventListener('focus', onWindowFocus);
 
     this.destroyRef.onDestroy(() => {
-      clearInterval(pollTimer);
-      document.removeEventListener('visibilitychange', onVisibility);
-      window.removeEventListener('focus', syncIfIdle);
+      clearInterval(syncTimer);
+      window.removeEventListener('focus', onWindowFocus);
       qpSub.unsubscribe();
       document.body.classList.remove('map-fullpage-open');
       this.map?.remove();
@@ -1289,16 +1267,24 @@ export class CoverageComponent {
     });
   }
 
-  protected toggleNapQuickFilter(status: NapOccupancyStatus): void {
-    this.typeFilter.set('NAP');
-    this.napFilter.set(this.napFilter() === status ? 'ALL' : status);
+  protected toggleNapSummaryFilter(status: NapOccupancyStatus): void {
+    if (this.napFilter() === status) {
+      this.napFilter.set('ALL');
+    } else {
+      this.typeFilter.set('NAP');
+      this.napFilter.set(status);
+    }
   }
 
-  protected toggleTypeQuickFilter(type: NodeType): void {
-    const next = this.typeFilter() === type ? 'ALL' : type;
-    this.typeFilter.set(next);
-    if (next !== 'NAP') {
+  protected toggleTypeSummaryFilter(type: NodeType): void {
+    if (this.typeFilter() === type) {
+      this.typeFilter.set('ALL');
       this.napFilter.set('ALL');
+    } else {
+      this.typeFilter.set(type);
+      if (type !== 'NAP') {
+        this.napFilter.set('ALL');
+      }
     }
   }
 

@@ -35,7 +35,9 @@ export class TenantService {
     const authed = this.auth.isAuthenticated();
     const tenant = authed ? this.tenantSignal() : null;
     applyBrandTheme(tenant);
-    applySidebarColors(authed ? loadSidebarColors(tenant?.slug ?? this.auth.tenantSlug()) : null);
+    applySidebarColors(
+      authed ? loadSidebarColors(tenant?.slug ?? this.auth.tenantSlug(), tenant) : null,
+    );
   });
 
   /** Tras guardar en Configuracion: refleja el tenant devuelto sin volver a pedirlo. */

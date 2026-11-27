@@ -27,7 +27,9 @@ import {
   SidebarColors,
   applySidebarColors,
   loadSidebarColors,
+  pickSidebarConfigModule,
   resetSidebarColors,
+  sanitizeSidebarColors,
   saveSidebarColors,
 } from '../../core/state/sidebar-theme';
 import { TenantService } from '../../core/state/tenant.service';
@@ -225,7 +227,7 @@ export class SettingsComponent {
     return getRolePermissionSummary(role, targetTenant);
   });
 
-  /** Colores del sidebar y fondo de pagina (oscuro, claro e indicador activo) con vista previa en vivo. */
+  /** Colores del sidebar (oscuro, claro e indicador activo) con vista previa en vivo. */
   protected readonly savedSidebarColors = signal<SidebarColors>({ ...DEFAULT_SIDEBAR_COLORS });
   protected readonly sidebarForm = this.fb.nonNullable.group({
     darkBg: [DEFAULT_SIDEBAR_COLORS.darkBg],
@@ -233,13 +235,12 @@ export class SettingsComponent {
     lightBg: [DEFAULT_SIDEBAR_COLORS.lightBg],
     lightText: [DEFAULT_SIDEBAR_COLORS.lightText],
     indicator: [DEFAULT_SIDEBAR_COLORS.indicator],
-    pageDarkBg: [DEFAULT_SIDEBAR_COLORS.pageDarkBg],
-    pageLightBg: [DEFAULT_SIDEBAR_COLORS.pageLightBg],
   });
 
   private readonly syncSidebarColorsForm = effect(() => {
-    const slug = this.tenant()?.slug ?? this.auth.tenantSlug();
-    const loaded = loadSidebarColors(slug);
+    const tenant = this.tenant();
+    const slug = tenant?.slug ?? this.auth.tenantSlug();
+    const loaded = loadSidebarColors(slug, tenant);
     this.savedSidebarColors.set(loaded);
     this.sidebarForm.reset(loaded, { emitEvent: false });
   });
@@ -259,8 +260,6 @@ export class SettingsComponent {
       lightBg: current.lightBg ?? DEFAULT_SIDEBAR_COLORS.lightBg,
       lightText: current.lightText ?? DEFAULT_SIDEBAR_COLORS.lightText,
       indicator: current.indicator ?? DEFAULT_SIDEBAR_COLORS.indicator,
-      pageDarkBg: current.pageDarkBg ?? DEFAULT_SIDEBAR_COLORS.pageDarkBg,
-      pageLightBg: current.pageLightBg ?? DEFAULT_SIDEBAR_COLORS.pageLightBg,
     });
   });
 
@@ -842,26 +841,84 @@ export class SettingsComponent {
       raw.darkText.toLowerCase() !== saved.darkText.toLowerCase() ||
       raw.lightBg.toLowerCase() !== saved.lightBg.toLowerCase() ||
       raw.lightText.toLowerCase() !== saved.lightText.toLowerCase() ||
-      raw.indicator.toLowerCase() !== saved.indicator.toLowerCase() ||
-      raw.pageDarkBg.toLowerCase() !== saved.pageDarkBg.toLowerCase() ||
-      raw.pageLightBg.toLowerCase() !== saved.pageLightBg.toLowerCase()
+      raw.indicator.toLowerCase() !== saved.indicator.toLowerCase()
     );
   }
 
   protected saveSidebarPalette(): void {
-    const slug = this.tenant()?.slug ?? this.auth.tenantSlug();
-    const saved = saveSidebarColors(slug, this.sidebarForm.getRawValue());
+    const tenant = this.tenant();
+    const slug = tenant?.slug ?? this.auth.tenantSlug();
+    const clean = sanitizeSidebarColors(this.sidebarForm.getRawValue());
+    const targetMod = this.canManageRoles() ? pickSidebarConfigModule(tenant) : null;
+
+    if (tenant && targetMod && !this.saving()) {
+      this.saving.set(true);
+      const nextConfig = { ...(targetMod.config ?? {}), sidebarColors: clean };
+      this.api
+        .updateModule(tenant.id, targetMod.moduleKey, {
+          enabled: targetMod.enabled,
+          config: nextConfig,
+        })
+        .subscribe({
+          next: (updated) => {
+            this.saving.set(false);
+            const saved = saveSidebarColors(slug, clean);
+            this.savedSidebarColors.set(saved);
+            this.sidebarForm.reset(saved, { emitEvent: false });
+            this.tenants.update((all) => all.map((t) => (t.id === updated.id ? updated : t)));
+            this.tenantService.replaceTenant(updated);
+            this.toast.success('Colores del sidebar guardados en el backend para todo el proveedor.');
+          },
+          error: (err: unknown) => {
+            this.saving.set(false);
+            this.toast.error(describeHttpError(err));
+          },
+        });
+      return;
+    }
+
+    const saved = saveSidebarColors(slug, clean);
     this.savedSidebarColors.set(saved);
     this.sidebarForm.reset(saved, { emitEvent: false });
-    this.toast.success('Colores de apariencia guardados.');
+    this.toast.success('Colores del sidebar guardados.');
   }
 
   protected resetSidebarPalette(): void {
-    const slug = this.tenant()?.slug ?? this.auth.tenantSlug();
+    const tenant = this.tenant();
+    const slug = tenant?.slug ?? this.auth.tenantSlug();
+    const targetMod = this.canManageRoles() ? pickSidebarConfigModule(tenant) : null;
+
+    if (tenant && targetMod && !this.saving()) {
+      this.saving.set(true);
+      const nextConfig: Record<string, unknown> = { ...(targetMod.config ?? {}) };
+      delete nextConfig['sidebarColors'];
+      this.api
+        .updateModule(tenant.id, targetMod.moduleKey, {
+          enabled: targetMod.enabled,
+          config: Object.keys(nextConfig).length > 0 ? nextConfig : null,
+        })
+        .subscribe({
+          next: (updated) => {
+            this.saving.set(false);
+            const defaults = resetSidebarColors(slug);
+            this.savedSidebarColors.set(defaults);
+            this.sidebarForm.reset(defaults, { emitEvent: false });
+            this.tenants.update((all) => all.map((t) => (t.id === updated.id ? updated : t)));
+            this.tenantService.replaceTenant(updated);
+            this.toast.info('Sidebar restablecido a los colores originales en el backend.');
+          },
+          error: (err: unknown) => {
+            this.saving.set(false);
+            this.toast.error(describeHttpError(err));
+          },
+        });
+      return;
+    }
+
     const defaults = resetSidebarColors(slug);
     this.savedSidebarColors.set(defaults);
     this.sidebarForm.reset(defaults, { emitEvent: false });
-    this.toast.info('Apariencia restablecida a los colores originales de D&D.');
+    this.toast.info('Sidebar restablecido a los colores originales de D&D.');
   }
 
   protected brandChanged(): boolean {

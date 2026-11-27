@@ -57,7 +57,7 @@
   display: flex;
   flex-direction: column;
   gap: 0.6rem;
-  background-image: radial-gradient(rgba(0, 0, 0, 0.02) 1px, transparent 1px);
+  background-image: radial-gradient(rgba(148, 163, 184, 0.14) 1px, transparent 1px);
   background-size: 16px 16px;
 }
 .bubble {
@@ -82,15 +82,15 @@
   align-self: flex-end;
   border-top-right-radius: 4px;
 }
-:root[data-theme='dark'] .bubble.out {
-  background: rgba(16, 185, 129, 0.24);
-  color: #ecfdf5;
-}
 .bubble.bot {
   background: var(--purple-light);
   color: var(--text-primary);
   align-self: flex-end;
   border-top-right-radius: 4px;
+}
+html[data-theme='dark'] .bubble.out {
+  background: #064e3b;
+  color: #ecfdf5;
 }
 .bubble .t {
   font-size: 0.62rem;

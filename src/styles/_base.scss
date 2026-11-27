@@ -24,18 +24,21 @@ body {
   transition: background-color 0.25s ease, color 0.25s ease;
 }
 
-:root[data-theme='dark'] body {
+html[data-theme='dark'] body {
   background:
-    radial-gradient(920px 500px at 100% -5%, rgba(124, 58, 237, 0.16), transparent 60%),
-    radial-gradient(780px 440px at -10% 105%, rgba(6, 182, 212, 0.13), transparent 55%),
+    radial-gradient(920px 520px at 100% -5%, rgba(124, 58, 237, 0.14), transparent 60%),
+    radial-gradient(780px 460px at -10% 105%, rgba(6, 182, 212, 0.12), transparent 58%),
     var(--surface-2);
+  background-attachment: fixed;
 }
 
-:root[data-theme='dark'] ::-webkit-scrollbar-thumb {
-  background: #28354f;
+html[data-theme='dark'] ::-webkit-scrollbar-thumb {
+  background: #334155;
+  background-clip: content-box;
 }
-:root[data-theme='dark'] ::-webkit-scrollbar-thumb:hover {
-  background: #3a4c70;
+html[data-theme='dark'] ::-webkit-scrollbar-thumb:hover {
+  background: #475569;
+  background-clip: content-box;
 }
 
 body.sidebar-open,

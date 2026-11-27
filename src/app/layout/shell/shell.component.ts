@@ -116,6 +116,7 @@ export class ShellComponent implements OnInit {
   private readonly mobileBreakpoint = 1024;
 
   constructor() {
+    applyAppTheme(this.sidebarTheme());
     effect(() => {
       document.body.classList.toggle('sidebar-open', this.mobileOpen());
     });
