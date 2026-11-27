@@ -76,6 +76,7 @@ interface LeafletTileLayer {
 interface LeafletMap {
   setView(center: [number, number], zoom: number): this;
   fitBounds(bounds: [number, number][], options?: { padding?: [number, number]; maxZoom?: number }): this;
+  closePopup?(): this;
   invalidateSize(): void;
   on(event: string, handler: (e: { latlng: { lat: number; lng: number } }) => void): this;
   remove(): void;
@@ -248,6 +249,7 @@ export class CoverageComponent {
   private fiberLayer: LeafletLayerGroup | null = null;
   private draftFiberLayer: LeafletLayerGroup | null = null;
   private activeTileLayers: LeafletTileLayer[] = [];
+  private skipNextAutoFit = false;
 
   protected readonly mapStyles = MAP_STYLES;
   protected readonly mapStyle = signal<MapStyleId>('satellite');
@@ -296,6 +298,10 @@ export class CoverageComponent {
   protected readonly draftFromNodeId = signal('');
   protected readonly draftToNodeId = signal('');
   protected readonly draftFiberColor = signal('#06b6d4');
+
+  // Modo de reubicacion manual de nodo (arrastrar con mouse/dedo o tocar nueva posicion)
+  protected readonly relocatingNodeId = signal<string | null>(null);
+  protected readonly relocateCoords = signal<{ lat: number; lon: number } | null>(null);
 
   protected readonly nodeTypes: { value: NodeType; text: string }[] = [
     { value: 'POP', text: 'POP / nodo de distribucion' },
@@ -355,6 +361,24 @@ export class CoverageComponent {
   protected readonly nodesById = computed(
     () => new Map(this.nodes.value().map((n) => [n.id, n])),
   );
+
+  /** Nodo actualmente en modo de reubicacion manual sobre el mapa. */
+  protected readonly relocatingNode = computed<NetworkNode | null>(() => {
+    const id = this.relocatingNodeId();
+    return id ? (this.nodesById().get(id) ?? null) : null;
+  });
+
+  protected readonly hasRelocateChanged = computed(() => {
+    const node = this.relocatingNode();
+    const coords = this.relocateCoords();
+    if (!node || !coords) {
+      return false;
+    }
+    return (
+      Math.abs(node.latitude - coords.lat) > 0.0000005 ||
+      Math.abs(node.longitude - coords.lon) > 0.0000005
+    );
+  });
 
   /** Caja NAP actualmente abierta en el modal de control de puertos. */
   protected readonly managingNap = computed<NetworkNode | null>(() => {
@@ -522,12 +546,15 @@ export class CoverageComponent {
       const links = this.fiberLinks.value();
       const mapById = this.nodesById();
       const activeEditLinkId = this.tracingFiber() ? this.editingLink()?.id ?? null : null;
+      const relocId = this.relocatingNodeId();
+      const relocCoords = this.relocateCoords();
       if (!host) {
         return;
       }
       this.ensureMap(host);
-      this.renderFiberLinks(links, mapById, activeEditLinkId);
-      this.renderMarkers(list);
+      const override = relocId && relocCoords ? { nodeId: relocId, ...relocCoords } : null;
+      this.renderFiberLinks(links, mapById, activeEditLinkId, override);
+      this.renderMarkers(list, override);
     });
 
     effect(() => {
@@ -720,6 +747,69 @@ export class CoverageComponent {
     this.deleting.set(node);
   }
 
+  // ---------- Reubicacion manual de nodos en el mapa ----------
+
+  protected startRelocateNode(node: NetworkNode): void {
+    // Cancela trazado de fibra si estaba activo para evitar conflictos de clics en el mapa
+    this.tracingFiber.set(false);
+    this.editingLink.set(null);
+    this.draftWaypoints.set([]);
+    this.pickedCoords.set(null);
+
+    this.relocatingNodeId.set(node.id);
+    this.relocateCoords.set({ lat: node.latitude, lon: node.longitude });
+
+    if (this.map) {
+      this.map.setView([node.latitude, node.longitude], 17);
+    }
+    this.mapHost()?.nativeElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
+
+  protected resetRelocateNode(): void {
+    const node = this.relocatingNode();
+    if (!node) {
+      return;
+    }
+    this.relocateCoords.set({ lat: node.latitude, lon: node.longitude });
+  }
+
+  protected cancelRelocateNode(): void {
+    this.relocatingNodeId.set(null);
+    this.relocateCoords.set(null);
+  }
+
+  protected saveRelocateNode(): void {
+    const node = this.relocatingNode();
+    const coords = this.relocateCoords();
+    if (!node || !coords || this.saving()) {
+      return;
+    }
+    this.saving.set(true);
+    this.api
+      .updateNode(node.id, {
+        name: node.name,
+        type: node.type,
+        latitude: coords.lat,
+        longitude: coords.lon,
+        status: node.status,
+        napCapacity: node.type === 'NAP' ? ((node.napCapacity ?? 8) as NapCapacity) : null,
+      })
+      .subscribe({
+        next: (updated) => {
+          this.saving.set(false);
+          this.skipNextAutoFit = true;
+          this.nodes.update((list) => list.map((n) => (n.id === updated.id ? updated : n)));
+          this.relocatingNodeId.set(null);
+          this.relocateCoords.set(null);
+          this.toast.success(`Ubicacion de "${updated.name}" actualizada en el mapa.`);
+        },
+        error: (err: unknown) => {
+          this.saving.set(false);
+          this.toast.error(describeHttpError(err));
+        },
+      });
+  }
+
   // ---------- Trazados de fibra optica ----------
 
   protected openCreateLink(keepDraft = false): void {
@@ -770,6 +860,7 @@ export class CoverageComponent {
    * para un trazado de fibra ya existente (arrastrar vertices, agregar curvas en '+' y guardar).
    */
   protected startAdjustExistingLink(link: FiberLink): void {
+    this.cancelRelocateNode();
     this.editingLink.set(link);
     this.draftFromNodeId.set(link.fromNodeId);
     this.draftToNodeId.set(link.toNodeId);
@@ -793,6 +884,7 @@ export class CoverageComponent {
   }
 
   protected startTraceOnMap(): void {
+    this.cancelRelocateNode();
     const raw = this.linkForm.getRawValue();
     if (!raw.fromNodeId || !raw.toNodeId || raw.fromNodeId === raw.toNodeId) {
       this.toast.error('Selecciona un nodo de origen y un nodo de destino diferentes antes de trazar.');
@@ -1103,12 +1195,33 @@ export class CoverageComponent {
     map.on('click', (e) => {
       const lat = Number(e.latlng.lat.toFixed(6));
       const lon = Number(e.latlng.lng.toFixed(6));
+      if (this.relocatingNodeId()) {
+        this.relocateCoords.set({ lat, lon });
+        return;
+      }
       if (this.tracingFiber()) {
         this.draftWaypoints.update((pts) => [...pts, { lat, lon }]);
         return;
       }
       this.pickedCoords.set({ lat, lon });
     });
+
+    const onHostClick = (ev: MouseEvent) => {
+      const btn = (ev.target as HTMLElement | null)?.closest?.('[data-relocate-node]') as HTMLElement | null;
+      if (!btn) {
+        return;
+      }
+      const nodeId = btn.getAttribute('data-relocate-node');
+      const target = nodeId ? this.nodesById().get(nodeId) : null;
+      if (target) {
+        ev.stopPropagation();
+        this.map?.closePopup?.();
+        this.startRelocateNode(target);
+      }
+    };
+    host.addEventListener('click', onHostClick);
+    this.destroyRef.onDestroy(() => host.removeEventListener('click', onHostClick));
+
     setTimeout(() => this.map?.invalidateSize(), 150);
   }
 
@@ -1138,6 +1251,7 @@ export class CoverageComponent {
     links: FiberLink[],
     nodesMap: Map<string, NetworkNode>,
     excludeLinkId: string | null = null,
+    relocateOverride: { nodeId: string; lat: number; lon: number } | null = null,
   ): void {
     const L = this.leaflet();
     if (!L || !this.map || !this.fiberLayer) {
@@ -1154,10 +1268,18 @@ export class CoverageComponent {
       if (!from || !to) {
         continue;
       }
+      const fromPos: [number, number] =
+        relocateOverride && relocateOverride.nodeId === from.id
+          ? [relocateOverride.lat, relocateOverride.lon]
+          : [from.latitude, from.longitude];
+      const toPos: [number, number] =
+        relocateOverride && relocateOverride.nodeId === to.id
+          ? [relocateOverride.lat, relocateOverride.lon]
+          : [to.latitude, to.longitude];
       const coords: [number, number][] = [
-        [from.latitude, from.longitude],
+        fromPos,
         ...(link.waypoints ?? []).map((p) => [p.lat, p.lon] as [number, number]),
-        [to.latitude, to.longitude],
+        toPos,
       ];
       const meta = FIBER_META[link.fiberType] ?? FIBER_META.DISTRIBUTION;
       const color = link.color || meta.color;
@@ -1347,7 +1469,10 @@ export class CoverageComponent {
     });
   }
 
-  private renderMarkers(list: NetworkNode[]): void {
+  private renderMarkers(
+    list: NetworkNode[],
+    relocateOverride: { nodeId: string; lat: number; lon: number } | null = null,
+  ): void {
     const L = this.leaflet();
     if (!L || !this.map || !this.markersLayer) {
       return;
@@ -1355,6 +1480,9 @@ export class CoverageComponent {
     this.markersLayer.clearLayers();
 
     for (const node of list) {
+      const isRelocating = relocateOverride !== null && relocateOverride.nodeId === node.id;
+      const lat = isRelocating ? relocateOverride.lat : node.latitude;
+      const lon = isRelocating ? relocateOverride.lon : node.longitude;
       const color =
         node.status !== 'ACTIVE'
           ? '#94a3b8'
@@ -1362,45 +1490,86 @@ export class CoverageComponent {
             ? NAP_OCCUPANCY_COLORS[node.napStatus]
             : NODE_COLORS[node.type];
 
-      const iconHtml = `
-        <div style="
-          width:32px;height:32px;border-radius:50%;
-          background:${color};color:#fff;
-          display:grid;place-items:center;
-          border:2.5px solid #fff;
-          box-shadow:0 6px 16px rgba(15,23,42,.35);
-          font-size:13px;">
-          <i class="${NODE_ICONS[node.type]}"></i>
-        </div>`;
+      const pinSize = isRelocating ? 40 : 32;
+      const iconHtml = isRelocating
+        ? `
+          <div class="coverage-pin-relocating" style="--pin-color:${color}" title="Arrastra para mover este nodo o haz clic en el mapa">
+            <span class="coverage-pin-pulse"></span>
+            <div class="coverage-pin-core" style="background:${color}">
+              <i class="${NODE_ICONS[node.type]}"></i>
+            </div>
+          </div>`
+        : `
+          <div style="
+            width:32px;height:32px;border-radius:50%;
+            background:${color};color:#fff;
+            display:grid;place-items:center;
+            border:2.5px solid #fff;
+            box-shadow:0 6px 16px rgba(15,23,42,.35);
+            font-size:13px;">
+            <i class="${NODE_ICONS[node.type]}"></i>
+          </div>`;
+
       const icon = L.divIcon({
         html: iconHtml,
-        className: 'coverage-leaflet-pin',
-        iconSize: [32, 32],
-        iconAnchor: [16, 16],
-        popupAnchor: [0, -16],
+        className: isRelocating ? 'coverage-leaflet-pin is-relocating' : 'coverage-leaflet-pin',
+        iconSize: [pinSize, pinSize],
+        iconAnchor: [pinSize / 2, pinSize / 2],
+        popupAnchor: [0, -pinSize / 2],
       });
-      const safeName = escapeHtml(node.name);
-      const typeText = escapeHtml(nodeTypeLabel(node.type).text);
-      const statusText = escapeHtml(nodeStatusLabel(node.status).text);
-      let napHtml = '';
-      if (node.type === 'NAP') {
-        const cap = node.napCapacity ?? 8;
-        const used = node.usedPorts ?? 0;
-        const occ = this.napOccupancyMeta(node);
-        napHtml = `<div style="margin-top:4px;font-size:11px;font-weight:700;color:${occ.color}">
-          Caja 1x${cap} · ${used}/${cap} puertos · ${escapeHtml(occ.text)}
-        </div>`;
-      }
-      L.marker([node.latitude, node.longitude], { icon })
-        .bindPopup(
-          `<div style="min-width:175px;font-family:inherit">
+
+      const marker = L.marker([lat, lon], {
+        icon,
+        draggable: isRelocating,
+        ...(isRelocating ? { zIndexOffset: 1000 } : {}),
+      }).addTo(this.markersLayer);
+
+      if (isRelocating) {
+        marker.on('drag', (e) => {
+          const pos = e.target.getLatLng();
+          this.renderFiberLinks(this.fiberLinks.value(), this.nodesById(), null, {
+            nodeId: node.id,
+            lat: pos.lat,
+            lon: pos.lng,
+          });
+        });
+        marker.on('dragend', (e) => {
+          const pos = e.target.getLatLng();
+          this.relocateCoords.set({
+            lat: Number(pos.lat.toFixed(6)),
+            lon: Number(pos.lng.toFixed(6)),
+          });
+        });
+      } else {
+        const safeName = escapeHtml(node.name);
+        const typeText = escapeHtml(nodeTypeLabel(node.type).text);
+        const statusText = escapeHtml(nodeStatusLabel(node.status).text);
+        let napHtml = '';
+        if (node.type === 'NAP') {
+          const cap = node.napCapacity ?? 8;
+          const used = node.usedPorts ?? 0;
+          const occ = this.napOccupancyMeta(node);
+          napHtml = `<div style="margin-top:4px;font-size:11px;font-weight:700;color:${occ.color}">
+            Caja 1x${cap} · ${used}/${cap} puertos · ${escapeHtml(occ.text)}
+          </div>`;
+        }
+        marker.bindPopup(
+          `<div style="min-width:185px;font-family:inherit">
             <strong style="font-size:13px">${safeName}</strong><br/>
             <span style="font-size:11px;color:#475569">${typeText} · ${statusText}</span>
             ${napHtml}
             <div style="margin-top:3px"><code style="font-size:11px;color:#64748b">${node.latitude}, ${node.longitude}</code></div>
+            <button type="button" data-relocate-node="${escapeHtml(node.id)}" class="coverage-popup-btn">
+              <i class="fas fa-arrows-up-down-left-right"></i> Mover ubicacion
+            </button>
           </div>`,
-        )
-        .addTo(this.markersLayer);
+        );
+      }
+    }
+
+    if (relocateOverride || this.skipNextAutoFit) {
+      this.skipNextAutoFit = false;
+      return;
     }
 
     if (list.length === 1) {
